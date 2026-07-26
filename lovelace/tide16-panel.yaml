@@ -739,17 +739,24 @@
                   width: "11.357%"
                   height: "56.500%"
                   transform: translate(0, 0)
-              # Card version, bottom-left of the silver end panel
-              # (x1364..1989, full height). Black on the silver, 13 canvas
-              # px, 16px in from the panel's left edge and clear of the
-              # knob ring above it. A readout with a title and no rows is
-              # the card's static-text element.
+              # Card version, bottom-RIGHT of the silver end panel
+              # (x1364..1989, full height). Black on the silver, 19.5
+              # canvas px. Anchored by `right`, not `left`, so it stays
+              # pinned to the panel's edge whatever the string grows to -
+              # which needs `left: unset`, because picture-elements sets
+              # left itself. The 0.854% inset is the same one the channel
+              # legend uses on the other end of the plate.
+              # A readout with a title and no rows is the card's
+              # static-text element.
               - type: custom:tide16-readout
                 title: v1.1
-                title_size: 0.653cqw
+                title_size: 0.980cqw
                 title_color: "#000"
                 title_gap: "0"
+                align: right
                 style:
-                  left: "69.347%"
-                  top: "93.250%"
+                  right: "0.854%"
+                  left: unset
+                  top: "91.625%"
+                  width: "4.020%"
                   transform: translate(0, 0)
