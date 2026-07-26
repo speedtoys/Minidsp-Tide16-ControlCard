@@ -1,0 +1,180 @@
+# The complete front-panel view, exactly as it runs here - the bar meter
+# plus every live readout painted back onto the plate.
+#
+# This is one entry in a dashboard's `views:` list. Drop it into a YAML
+# dashboard, or paste the `cards:` block into the raw editor of a
+# storage-mode dashboard (Edit dashboard > menu > Raw configuration
+# editor) with the view set to panel mode.
+#
+# Needs:
+#   - assets/ copied to config/www/tide16/
+#   - packages/tide16_panel.yaml (the split volume sensors)
+#   - card-mod, from HACS, for the scale() wrapper below. Delete the
+#     card_mod block if you don't want that dependency - everything
+#     else works without it, the panel is just rendered full width.
+#
+# Every position is a percentage of the 2622x542 plate, so the whole
+# thing scales together at any display size. The numbers were measured
+# off the artwork; changing the plate means re-measuring.
+  - title: Tide16
+    path: tide16
+    icon: mdi:audio-video
+    type: panel
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: picture-elements
+            # ?v= is a cache-buster. plate.png was replaced in place with the
+            # bar-free version, and browsers happily kept serving the cached
+            # original - which looks like live bars animating BEHIND a set of
+            # static painted ones. Bump this whenever the plate art changes.
+            image: /local/tide16/plate.png?v=2
+            card_mod:
+              style: |
+                ha-card {
+                  container-type: inline-size;
+                  /* scale the whole card - image AND positioned text together,
+                     so the glyph alignment cannot drift */
+                  transform: scale(0.75);
+                  transform-origin: top center;
+                  padding: 0 !important;
+                  border: none !important;
+                  background: transparent !important;
+                  box-shadow: none !important;
+                }
+            elements:
+              # Live 16-channel meter, drawn over the bar-graph window that
+              # was erased from plate.png. The box below IS the geometry:
+              # left/top place it on the meter's own origin (canvas x=454,
+              # y=146) and width/height are exactly 16 bar-pitches by the
+              # bar travel (436 x 143 of the 2622x542 canvas). The channel
+              # numbers 1-16 below it are still baked into the plate, so
+              # nudging any of these four numbers will visibly de-register
+              # the bars from their labels.
+              # floor_db/ceiling_db default to -60/0 in the card. Idle noise
+              # floor measured here is -122 to -185 dB, so silence sits at
+              # zero height as it should; if real programme material turns
+              # out to peg or barely move the bars, this is the pair to
+              # tune, not the geometry.
+              - type: custom:tide16-bars
+                style:
+                  left: "17.315%"
+                  top: "26.937%"
+                  width: "16.629%"
+                  height: "26.384%"
+                  transform: translate(0, 0)
+                  pointer-events: none
+              # Format logo. Positioned off Tide16-withdata.png, whose logo
+              # ink occupies canvas x454-590, y339-400 (137x62). The supplied
+              # artwork is a different official lockup - its ATMOS line is
+              # smaller and more tightly spaced, so it is 137x51 at the same
+              # width rather than 137x62. Matched on width and x-origin and
+              # centred in the reference's vertical band; NOT stretched to
+              # 62 tall, which would distort the mark by 22%.
+              # brightness(0.91) takes the pure-white asset down to the
+              # reference's ink luma of 231 rather than blowing out at 255.
+              - type: image
+                image: /local/tide16/dolby-atmos.png
+                style:
+                  left: "17.315%"
+                  top: "63.561%"
+                  width: "5.225%"
+                  transform: translate(0, 0)
+                  filter: brightness(0.91)
+                  pointer-events: none
+              - type: state-label
+                entity: sensor.tide16_volume_integer
+                style:
+                  right: "86.842%"
+                  left: unset
+                  top: "24.762%"
+                  transform: "translate(0, 0)"
+                  font-size: 4.081cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#E7E8E8"
+                  pointer-events: none
+              - type: state-label
+                entity: sensor.tide16_volume_decimal
+                prefix: "."
+                style:
+                  left: "13.196%"
+                  top: "32.453%"
+                  transform: "translate(0, 0)"
+                  font-size: 2.136cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#DFE0E0"
+                  pointer-events: none
+              - type: state-label
+                entity: sensor.tide16_source
+                style:
+                  left: "7.589%"
+                  top: "53.540%"
+                  transform: "translate(0, 0)"
+                  font-size: 0.953cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#B7B8B8"
+                  pointer-events: none
+              - type: state-label
+                entity: sensor.tide16_speaker_config
+                style:
+                  left: "26.354%"
+                  top: "69.068%"
+                  transform: "translate(0, 0)"
+                  font-size: 1.144cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#BFC0C0"
+                  pointer-events: none
+              # status ("ready") - was baked into the plate, now live
+              - type: state-label
+                entity: sensor.tide16_status
+                style:
+                  left: "7.704%"
+                  top: "62.177%"
+                  transform: "translate(0, 0)"
+                  font-size: 0.725cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  white-space: nowrap
+                  margin: "-8px"
+                  color: "#332050"
+                  pointer-events: none
+              # Dirac Live indicator - lit when Dirac is engaged
+              - type: conditional
+                conditions:
+                  - entity: switch.tide16_dirac_live
+                    state: "on"
+                elements:
+                  - type: image
+                    image: /local/tide16/dirac.png
+                    style:
+                      left: "30.626%"
+                      top: "59.041%"
+                      width: "3.432%"
+                      transform: "translate(0, 0)"
+                      pointer-events: none
+              - type: conditional
+                conditions:
+                  - entity: switch.tide16_dirac_live
+                    state_not: "on"
+                elements:
+                  - type: image
+                    image: /local/tide16/dirac.png
+                    style:
+                      left: "30.626%"
+                      top: "59.041%"
+                      width: "3.432%"
+                      transform: "translate(0, 0)"
+                      filter: "grayscale(1) brightness(0.45)"
+                      pointer-events: none

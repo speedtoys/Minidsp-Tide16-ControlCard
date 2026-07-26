@@ -1,0 +1,10 @@
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node (not required to build - dist/ is committed on purpose, HACS
+# serves it directly - but keep the cruft out if anyone adds tooling)
+node_modules/
+*.log

@@ -1,0 +1,18 @@
+# Display-formatting helpers for the Tide16 front-panel card.
+# The panel renders the volume as a large integer part with a smaller
+# decimal part, so the two halves are split here rather than in the card.
+template:
+  - sensor:
+      - name: "Tide16 Volume Integer"
+        unique_id: tide16_volume_int
+        availability: "{{ states('number.tide16_volume') not in ['unknown','unavailable'] }}"
+        state: >
+          {{ ('%.1f' | format(states('number.tide16_volume') | float(0))).split('.')[0] }}
+
+      - name: "Tide16 Volume Decimal"
+        unique_id: tide16_volume_dec
+        availability: "{{ states('number.tide16_volume') not in ['unknown','unavailable'] }}"
+        # NOTE: returns digits only - HA coerces a leading "." into "0.5",
+        # so the decimal point is supplied by the card element's prefix.
+        state: >
+          {{ ('%.1f' | format(states('number.tide16_volume') | float(0))).split('.')[1] }}

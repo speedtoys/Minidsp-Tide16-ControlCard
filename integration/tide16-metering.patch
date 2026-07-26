@@ -1,0 +1,318 @@
+diff -urN a/custom_components/minidsp_tide16/const.py b/custom_components/minidsp_tide16/const.py
+--- a/custom_components/minidsp_tide16/const.py	2026-07-26 06:40:28.946632060 -0700
++++ b/custom_components/minidsp_tide16/const.py	2026-07-26 06:40:28.952158399 -0700
+@@ -31,6 +31,30 @@
+ RMS_REFRESH_INTERVAL = 5  # seconds - metering only, no push notification exists
+ FULL_REFRESH_INTERVAL = 60  # seconds - safety-net resync of the pushed fields
+ 
++# v22: the front-panel Lovelace card draws a live 16-channel bar meter, and
++# 5s between samples reads as a broken meter rather than a slow one. Rather
++# than raise the cadence globally - which would poll the device 4x/sec
++# forever, including when nobody has the page open - the card asks for the
++# fast cadence via the request_fast_metering service and keeps re-asking on
++# a keepalive while it is on screen.
++#
++# HOLD is deliberately several times the keepalive period the card uses: it
++# is what makes this self-correcting. If the keepalives stop for any reason
++# (tab closed, view switched, laptop lid shut, browser throttling a
++# background tab, card crashed) nothing has to actively cancel anything -
++# the hold simply lapses and the coordinator drops back to the idle
++# interval. There is no state that can get stuck fast.
++FAST_RMS_INTERVAL = 0.25  # seconds - only while a card is actually watching
++FAST_METERING_HOLD = 3.0  # seconds of fast polling granted per keepalive
++
++# Measured on live hardware, 40/40 replies at 3.86 Hz: median round-trip
++# 3.7 ms, p95 36 ms, max 104 ms. Comfortably inside the 250 ms budget above.
++#
++# The dB -> bar-height mapping deliberately lives in the card (floor_db /
++# ceiling_db options), not here: it is a display choice, and the
++# integration should keep reporting raw dB regardless of how any
++# particular dashboard chooses to draw it.
++
+ # Official range, confirmed on docs.minidsp.com: set_volume_db /
+ # get_volume_db use -127.5 dB (effectively silent) to 0.0 dB (maximum).
+ # Previously guessed as -100.0 before the official docs were published -
+@@ -52,6 +76,29 @@
+ # this threshold if it's too sensitive/insensitive for your setup.
+ SIGNAL_THRESHOLD_DB = -70.0
+ 
++# v22 CONFIRMED WORKING, with real playback (Dolby Digital Plus 7.2.2 from
++# the Apple TV via Roku, -42 dB, unmuted):
++#   out[0:11]  live, moving frame to frame, roughly -44 to -68 dB
++#   out[11:16] flat -122.5 - correct, 7.2.2 is 11 channels (7 bed + 2 sub
++#              + 2 height), so the last five are genuinely unused
++# The "out" array IS populated, exactly as the paragraph above says.
++#
++# TRAP, cost an hour: an idle link looks identical to a working one at
++# every level EXCEPT the metering itself. sensor.tide16_stream reports the
++# NEGOTIATED format ("Dolby TrueHD / MLP") and speaker_config reports 7.2.2
++# even with nothing playing, so both look like proof of playback and are
++# not. During true silence every channel reads exactly -122.5, which is
++# easily mistaken for "the firmware never populates this". The only honest
++# playback indicator is the metering data moving.
++#
++# Measured level distribution over 40 frames of real content at -42 dB
++# master: p05 -80.6, median -62.7, p95 -46.0, max -42.9.
++#
++# Note the max lands on the master volume setting. Output level tracks
++# volume, so the card's dB->height mapping is anchored to
++# number.tide16_volume rather than to fixed dB values - otherwise the bars
++# would read completely differently at every volume.
++
+ # Confirmed on docs.minidsp.com (get_source_names / set_source): source
+ # label -> id mapping. Matches what was previously reverse-engineered live,
+ # now cross-checked against the official docs.
+diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/minidsp_tide16/coordinator.py
+--- a/custom_components/minidsp_tide16/coordinator.py	2026-07-26 06:40:28.948378881 -0700
++++ b/custom_components/minidsp_tide16/coordinator.py	2026-07-26 06:40:28.953256399 -0700
+@@ -98,6 +98,8 @@
+ from homeassistant.helpers.event import async_track_time_interval
+ 
+ from .const import (
++    FAST_METERING_HOLD,
++    FAST_RMS_INTERVAL,
+     FULL_REFRESH_INTERVAL,
+     MAX_VOLUME_DB,
+     MIN_VOLUME_DB,
+@@ -143,6 +145,35 @@
+     return best
+ 
+ 
++def _channels_db(entries) -> list[float] | None:
++    """Per-channel dB from a get_rms_block_db 'out' array, ordered by the
++    device's own 1-based "index" field rather than by array position.
++
++    v22: this data was always being fetched - _peak_db above just collapsed
++    all 16 channels down to the single loudest one and threw the rest away.
++    The front-panel card's bar meter needs them individually, so they're
++    kept here too. Same "out only" reasoning as _peak_db applies.
++
++    Sorting by "index" rather than trusting array order costs nothing and
++    means a bar can never end up attached to the wrong channel if the
++    device ever returns them out of order.
++    """
++    if not isinstance(entries, list):
++        return None
++    vals: dict[int, float] = {}
++    for item in entries:
++        if not isinstance(item, dict):
++            continue
++        val = item.get("val")
++        idx = item.get("index")
++        if not isinstance(val, (int, float)) or not isinstance(idx, int):
++            continue
++        vals[idx] = float(val)
++    if not vals:
++        return None
++    return [vals[k] for k in sorted(vals)]
++
++
+ class Tide16Coordinator:
+     """Owns the persistent WebSocket connection and the last-known state."""
+ 
+@@ -159,6 +190,12 @@
+         self._rms_lock = asyncio.Lock()
+         self._resync_lock = asyncio.Lock()
+ 
++        # v22: fast-metering hold. _fast_until is a loop timestamp, not a
++        # flag - see async_request_fast_metering for why that's what makes
++        # this impossible to leave stuck in fast mode.
++        self._unsub_fast_refresh = None
++        self._fast_until: float = 0.0
++
+         # v19: separate from self.data["volume_db"] (the last CONFIRMED
+         # value) - this tracks the target of a volume command that hasn't
+         # been confirmed yet, so back-to-back Volume +/- button presses
+@@ -180,6 +217,7 @@
+             "source": None,
+             "source_names": {},  # source id -> live display name (get_source_names)
+             "signal_peak_db": None,
++            "channel_db": None,  # v22: per-channel output levels, 16 floats
+             "bt_paired": None,
+             "bt_track_title": None,
+             "bt_track_artist": None,
+@@ -263,6 +301,9 @@
+         if self._unsub_rms_refresh is not None:
+             self._unsub_rms_refresh()
+             self._unsub_rms_refresh = None
++        if self._unsub_fast_refresh is not None:
++            self._unsub_fast_refresh()
++            self._unsub_fast_refresh = None
+         if self._unsub_full_refresh is not None:
+             self._unsub_full_refresh()
+             self._unsub_full_refresh = None
+@@ -280,6 +321,42 @@
+             self.hass.async_create_task(self._request_rms_state())
+ 
+     @callback
++    def async_request_fast_metering(self, duration: float = FAST_METERING_HOLD) -> None:
++        """Grant FAST_RMS_INTERVAL polling for `duration` seconds.
++
++        Called (repeatedly, as a keepalive) by the front-panel card while
++        its bar meter is actually on screen. Extending a deadline rather
++        than setting a flag is what makes this safe: every path out of fast
++        mode is the deadline lapsing, so a card that goes away without
++        telling us - closed tab, switched view, crashed, throttled by the
++        browser - costs at most FAST_METERING_HOLD seconds of extra polling
++        rather than leaving the device being hammered forever.
++
++        Repeated calls just push the deadline out; the timer itself is
++        created once and tears itself down in _async_fast_refresh.
++        """
++        self._fast_until = max(self._fast_until, self.hass.loop.time() + duration)
++        if self._unsub_fast_refresh is None:
++            self._unsub_fast_refresh = async_track_time_interval(
++                self.hass,
++                self._async_fast_refresh,
++                timedelta(seconds=FAST_RMS_INTERVAL),
++            )
++
++    @callback
++    def _async_fast_refresh(self, _now) -> None:
++        # Self-cancelling: the moment the hold lapses this timer removes
++        # itself, and the normal RMS_REFRESH_INTERVAL timer (which was
++        # never touched) carries on as the idle cadence.
++        if self.hass.loop.time() >= self._fast_until:
++            if self._unsub_fast_refresh is not None:
++                self._unsub_fast_refresh()
++                self._unsub_fast_refresh = None
++            return
++        if self._ws is not None and not self._ws.closed:
++            self.hass.async_create_task(self._request_rms_state())
++
++    @callback
+     def _async_full_refresh(self, _now) -> None:
+         if self._ws is not None and not self._ws.closed:
+             self.hass.async_create_task(self._request_resync_state())
+@@ -550,7 +627,9 @@
+ 
+     def _apply_rms_block_db(self, data) -> None:
+         if isinstance(data, dict):
+-            self.data["signal_peak_db"] = _peak_db(data.get("out"))
++            out = data.get("out")
++            self.data["signal_peak_db"] = _peak_db(out)
++            self.data["channel_db"] = _channels_db(out)
+ 
+     def _set_connected(self, connected: bool, status: str) -> None:
+         self.data["connected"] = connected
+diff -urN a/custom_components/minidsp_tide16/__init__.py b/custom_components/minidsp_tide16/__init__.py
+--- a/custom_components/minidsp_tide16/__init__.py	2026-07-26 06:40:28.944056895 -0700
++++ b/custom_components/minidsp_tide16/__init__.py	2026-07-26 06:40:28.951077627 -0700
+@@ -63,7 +63,7 @@
+ from homeassistant import config_entries
+ from homeassistant.config_entries import ConfigEntry
+ from homeassistant.const import Platform
+-from homeassistant.core import HomeAssistant
++from homeassistant.core import HomeAssistant, callback
+ from homeassistant.helpers import config_validation as cv
+ 
+ from .const import CONF_HOST, CONF_PORT, DEFAULT_PORT, DOMAIN
+@@ -112,6 +112,34 @@
+     return True
+ 
+ 
++SERVICE_REQUEST_FAST_METERING = "request_fast_metering"
++
++
++@callback
++def _async_register_services(hass: HomeAssistant) -> None:
++    """Register the fast-metering keepalive service (v22).
++
++    The front-panel card calls this on a short repeat while its bar meter
++    is visible, to temporarily raise the RMS poll rate (see
++    coordinator.async_request_fast_metering). It is intentionally a plain
++    service with no target: there is only ever one Tide16, and making the
++    card resolve an entity_id or device_id just to ask "please meter
++    faster" would buy nothing. Every loaded coordinator gets the request.
++
++    Registered once - has_service() guards against re-registering when a
++    second entry is added or an entry is reloaded.
++    """
++    if hass.services.has_service(DOMAIN, SERVICE_REQUEST_FAST_METERING):
++        return
++
++    @callback
++    def _handle(call) -> None:
++        for coordinator in hass.data.get(DOMAIN, {}).values():
++            coordinator.async_request_fast_metering()
++
++    hass.services.async_register(DOMAIN, SERVICE_REQUEST_FAST_METERING, _handle)
++
++
+ async def _async_preload_platforms(hass: HomeAssistant) -> None:
+     """Import every platform module in Home Assistant's dedicated import
+     executor thread, instead of letting async_forward_entry_setups()
+@@ -149,6 +177,7 @@
+     # comes up, which takes at most a couple of seconds on a local
+     # network - see entity.py.
+     coordinator.async_connect()
++    _async_register_services(hass)
+ 
+     return True
+ 
+diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minidsp_tide16/sensor.py
+--- a/custom_components/minidsp_tide16/sensor.py	2026-07-26 06:40:28.949944204 -0700
++++ b/custom_components/minidsp_tide16/sensor.py	2026-07-26 06:40:28.955332782 -0700
+@@ -35,6 +35,7 @@
+     async_add_entities(
+         [
+             Tide16StatusSensor(coordinator),
++            Tide16ChannelLevelsSensor(coordinator),
+             Tide16SourceSensor(coordinator),
+             Tide16BluetoothSensor(coordinator),
+             Tide16StreamSensor(coordinator),
+@@ -71,6 +72,42 @@
+         return self._coordinator.data.get("status")
+ 
+ 
++class Tide16ChannelLevelsSensor(_Tide16Sensor):
++    """Per-channel output levels for the front-panel bar meter (v22).
++
++    The 16 values live in an attribute rather than in 16 separate sensors
++    on purpose: the card wants them as one coherent frame, and while the
++    meter is being watched this updates 4x/sec - one entity churning at
++    that rate is very different from sixteen.
++
++    The state itself is the peak, rounded to whole dB. That rounding is
++    load-bearing: the state is what the recorder would store, and an
++    unrounded peak changes on essentially every single poll. The attribute
++    carries the real precision for the card.
++
++    EXCLUDE THIS FROM THE RECORDER - see the recorder: block in
++    configuration.yaml. Nothing here is worth 4 rows/sec of database.
++    """
++
++    _attr_name = "Channel Levels"
++    _attr_unique_id = "minidsp_tide16_channel_levels"
++    _attr_icon = "mdi:chart-bar"
++    _attr_native_unit_of_measurement = "dB"
++    _object_id = "tide16_channel_levels"
++
++    @property
++    def native_value(self) -> float | None:
++        peak = self._coordinator.data.get("signal_peak_db")
++        return None if peak is None else round(peak)
++
++    @property
++    def extra_state_attributes(self) -> dict:
++        return {
++            "channels": self._coordinator.data.get("channel_db"),
++            "peak_db": self._coordinator.data.get("signal_peak_db"),
++        }
++
++
+ class Tide16SourceSensor(_Tide16Sensor):
+     _attr_name = "Source"
+     _attr_unique_id = "minidsp_tide16_source"
+diff -urN a/custom_components/minidsp_tide16/services.yaml b/custom_components/minidsp_tide16/services.yaml
+--- a/custom_components/minidsp_tide16/services.yaml	1969-12-31 16:00:00.000000000 -0800
++++ b/custom_components/minidsp_tide16/services.yaml	2026-07-26 06:40:28.957191240 -0700
+@@ -0,0 +1,8 @@
++request_fast_metering:
++  name: Request fast metering
++  description: >-
++    Temporarily raise the RMS polling rate so the front-panel card's
++    16-channel bar meter animates smoothly. The grant is short-lived and
++    must be renewed by repeated calls (the card does this automatically
++    while it is on screen); once the calls stop, polling drops back to the
++    idle rate on its own. Calling this by hand is rarely useful.
