@@ -8,9 +8,8 @@ device.
 
 ![the Tide16 panel, live](docs/screenshot.png)
 
-*My system, mid-session.  It runs 7.2.2, so the meter shows 11 assigned
-outputs and the legend names them; yours will show your own layout.  The
-meter is at rest in this shot - the source was silent when it was taken.*
+*My system, mid-session, meter live.  It runs 7.2.2, so 11 outputs are
+assigned and the legend names them; yours will show your own layout.*
 
 ## What's here
 

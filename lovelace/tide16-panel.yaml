@@ -609,6 +609,22 @@
                   top: "3.750%"
                   width: "2.412%"
                   transform: translate(0, 0)
+              # "PAIR" under the mark, centred on it: same box left/width
+              # as the glyph plus align: center, so the two stay registered
+              # to each other if either moves. 4px under the disc's bottom
+              # edge (y63), and set to the source labels' own `size`
+              # (0.804cqw = 16 canvas px) so it reads as one of the row.
+              - type: custom:tide16-readout
+                title: PAIR
+                title_size: 0.804cqw
+                title_color: "#B7B8B8"
+                title_gap: "0"
+                align: center
+                style:
+                  left: "64.221%"
+                  top: "16.750%"
+                  width: "2.412%"
+                  transform: translate(0, 0)
               # Power glyph over the standby button (centre x=1158, top
               # edge y=137), 9px clear of it. Ceiling is the "Scenes:"
               # heading, whose cap top computes to y=78 - this sits at 80.
