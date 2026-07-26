@@ -1,6 +1,66 @@
+diff -urN a/custom_components/minidsp_tide16/button.py b/custom_components/minidsp_tide16/button.py
+--- a/custom_components/minidsp_tide16/button.py	2026-07-26 16:17:00.533076101 -0700
++++ b/custom_components/minidsp_tide16/button.py	2026-07-26 16:17:00.541687724 -0700
+@@ -20,6 +20,11 @@
+ from .const import DOMAIN, SOURCE_LABEL_TO_ID, VOLUME_STEP_DB, slugify_label
+ from .entity import Tide16Entity
+ 
++# The device's own scene slots, in the order its web UI and front panel
++# use them. The index is what set_scene takes; the colour is the only
++# name the hardware gives them.
++SCENE_COLOURS = ((0, "red"), (1, "green"), (2, "yellow"), (3, "blue"))
++
+ 
+ async def async_setup_entry(
+     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+@@ -36,6 +41,9 @@
+         Tide16SourceButton(coordinator, label, source_id)
+         for label, source_id in SOURCE_LABEL_TO_ID.items()
+     ]
++    entities += [
++        Tide16SceneButton(coordinator, index, colour) for index, colour in SCENE_COLOURS
++    ]
+     async_add_entities(entities)
+ 
+ 
+@@ -97,6 +105,34 @@
+         await self._coordinator.async_nudge_volume(-VOLUME_STEP_DB)
+ 
+ 
++class Tide16SceneButton(_Tide16Button):
++    """One of the four scene slots the Tide16 stores itself.
++
++    A scene is a whole-device snapshot - source, volume, Dirac preset,
++    Dirac on/off, bass management, upmixer, Dolby/DTS - and the device
++    names the slots by the colours printed on its front panel, which is
++    the order the stock web UI lists them in: red, green, yellow, blue.
++
++    Press RECALLS (set_scene). Nothing here can save over a slot: the
++    device's save_scene is destructive and has no undo, so it is
++    deliberately not exposed as an entity - use the stock web UI's
++    "Save current" swatches at http://<host>:5050 for that.
++    """
++
++    _attr_icon = "mdi:palette"
++
++    def __init__(self, coordinator, index: int, colour: str) -> None:
++        self._index = index
++        self._colour = colour
++        self._object_id = f"tide16_scene_{colour}"
++        super().__init__(coordinator)
++        self._attr_unique_id = f"minidsp_tide16_scene_{colour}"
++        self._attr_name = f"Scene: {colour.capitalize()}"
++
++    async def async_press(self) -> None:
++        await self._coordinator.async_recall_scene(self._index)
++
++
+ class Tide16SourceButton(_Tide16Button):
+     _attr_icon = "mdi:import"
+ 
 diff -urN a/custom_components/minidsp_tide16/const.py b/custom_components/minidsp_tide16/const.py
---- a/custom_components/minidsp_tide16/const.py	2026-07-26 07:39:21.345648306 -0700
-+++ b/custom_components/minidsp_tide16/const.py	2026-07-26 07:39:21.350920197 -0700
+--- a/custom_components/minidsp_tide16/const.py	2026-07-26 16:17:00.533134453 -0700
++++ b/custom_components/minidsp_tide16/const.py	2026-07-26 16:17:00.542349207 -0700
 @@ -31,6 +31,30 @@
  RMS_REFRESH_INTERVAL = 5  # seconds - metering only, no push notification exists
  FULL_REFRESH_INTERVAL = 60  # seconds - safety-net resync of the pushed fields
@@ -63,8 +123,8 @@ diff -urN a/custom_components/minidsp_tide16/const.py b/custom_components/minids
  # label -> id mapping. Matches what was previously reverse-engineered live,
  # now cross-checked against the official docs.
 diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/minidsp_tide16/coordinator.py
---- a/custom_components/minidsp_tide16/coordinator.py	2026-07-26 07:39:21.347156923 -0700
-+++ b/custom_components/minidsp_tide16/coordinator.py	2026-07-26 07:39:21.351980065 -0700
+--- a/custom_components/minidsp_tide16/coordinator.py	2026-07-26 16:17:00.533161161 -0700
++++ b/custom_components/minidsp_tide16/coordinator.py	2026-07-26 16:17:00.542374905 -0700
 @@ -98,6 +98,8 @@
  from homeassistant.helpers.event import async_track_time_interval
  
@@ -285,9 +345,43 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
  
      def _set_connected(self, connected: bool, status: str) -> None:
          self.data["connected"] = connected
+@@ -681,6 +829,33 @@
+     async def async_bluetooth_pair(self) -> None:
+         await self._send({"endpoint": "set_bt_pairing_mode"})
+ 
++    async def async_recall_scene(self, index: int) -> None:
++        """Recall one of the four front-panel scenes (0-3 = red, green,
++        yellow, blue - the order the stock web UI uses).
++
++        A scene is a whole-device snapshot: source, volume, Dirac preset,
++        Dirac on/off, bass management, upmixer, Dolby/DTS settings.
++
++        NOTE the asymmetry, it is easy to get wrong: the device recalls
++        with set_scene and OVERWRITES with save_scene. The stock web UI at
++        :5050 only ever sends save_scene (its "Save current" swatches), so
++        the endpoint that reads like the obvious one is the destructive
++        one. Nothing here should ever send save_scene - a mis-tap would
++        silently replace a stored scene with the current state, and the
++        device keeps no undo.
++
++        Recalling a slot that was never saved is a no-op on the device.
++        """
++        await self._send({"endpoint": "set_scene", "index": int(index)})
++
++    async def async_set_preset(self, preset_id) -> None:
++        """Switch the active Dirac preset by id (see get_all_presets).
++
++        Ids are NOT contiguous - this device reports 1, 3..12 - so treat
++        them as opaque labels rather than an index to count through.
++        """
++        await self._send({"endpoint": "set_preset", "id": str(preset_id)})
++
+     async def async_set_dirac_enabled(self, enabled: bool) -> None:
+         """Enable/disable Dirac Live room correction.
+ 
 diff -urN a/custom_components/minidsp_tide16/__init__.py b/custom_components/minidsp_tide16/__init__.py
---- a/custom_components/minidsp_tide16/__init__.py	2026-07-26 07:39:21.343636023 -0700
-+++ b/custom_components/minidsp_tide16/__init__.py	2026-07-26 07:39:21.349859189 -0700
+--- a/custom_components/minidsp_tide16/__init__.py	2026-07-26 16:17:00.532896673 -0700
++++ b/custom_components/minidsp_tide16/__init__.py	2026-07-26 16:17:00.541743382 -0700
 @@ -63,7 +63,7 @@
  from homeassistant import config_entries
  from homeassistant.config_entries import ConfigEntry
@@ -341,8 +435,8 @@ diff -urN a/custom_components/minidsp_tide16/__init__.py b/custom_components/min
      return True
  
 diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minidsp_tide16/sensor.py
---- a/custom_components/minidsp_tide16/sensor.py	2026-07-26 07:39:21.348600554 -0700
-+++ b/custom_components/minidsp_tide16/sensor.py	2026-07-26 07:39:21.353082141 -0700
+--- a/custom_components/minidsp_tide16/sensor.py	2026-07-26 16:17:00.533294982 -0700
++++ b/custom_components/minidsp_tide16/sensor.py	2026-07-26 16:17:00.541861008 -0700
 @@ -35,6 +35,7 @@
      async_add_entities(
          [
@@ -402,7 +496,7 @@ diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minid
      _attr_unique_id = "minidsp_tide16_source"
 diff -urN a/custom_components/minidsp_tide16/services.yaml b/custom_components/minidsp_tide16/services.yaml
 --- a/custom_components/minidsp_tide16/services.yaml	1969-12-31 16:00:00.000000000 -0800
-+++ b/custom_components/minidsp_tide16/services.yaml	2026-07-26 07:39:21.354156146 -0700
++++ b/custom_components/minidsp_tide16/services.yaml	2026-07-26 16:17:00.541526944 -0700
 @@ -0,0 +1,8 @@
 +request_fast_metering:
 +  name: Request fast metering

@@ -1,21 +1,23 @@
 # Integration files
 
-The card needs two things that **do not exist** in the upstream
+The card needs three things that **do not exist** in the upstream
 integration:
 
 | | |
 |---|---|
 | `sensor.tide16_channel_levels` | All 16 channel levels, as one frame, plus the speaker each output is assigned to |
 | `minidsp_tide16.request_fast_metering` | Temporarily raises the poll rate to 4 Hz |
+| `button.tide16_scene_{red,green,yellow,blue}` | Recalls the four scenes the device stores itself |
 
 The `tide16-metering.patch` file adds them to
 [GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
-**v0.28.0**.
+**v0.28.0**.  (The filename is unchanged from when metering was all it
+did, so existing instructions keep working.)
 
 **Why a diff and not the finished files?** Because the finished files
-are 1,335 lines, only 202 of them mine.  Shipping them would republish
+are ~1,500 lines, only 340 of them mine.  Shipping them would republish
 Gael's integration under a different name, which is not what this repo
-is.  The diff carries my 202 lines and nothing else of substance - you
+is.  The diff carries my 340 lines and nothing else of substance - you
 install his integration normally, from his repo, and this adds to it.
 
 ## Apply
@@ -30,9 +32,11 @@ patch -p1 < /path/to/tide16-metering.patch
 
 Then restart Home Assistant.
 
-It touches four files and creates `services.yaml`.  Every hunk is
-additive - no existing line is changed or removed - so if you have local
-edits to those files the patch should still land.
+It touches five files and creates `services.yaml`.  Nothing is deleted
+and only two existing lines are rewritten - one import gains `callback`,
+and the peak assignment is split so the per-channel array can be kept
+alongside it - so if you have local edits to those files the patch
+should still land.
 
 No `patch` command?  It's a readable diff: lines starting with `+` are
 the additions, and `@@` headers give the line numbers to add them at.
@@ -44,6 +48,9 @@ the additions, and `@@` headers give the line numbers to add them at.
   names your speakers (`LeftFront`, `Center`, `Sub`...).
 - **Developer Tools > Actions** - `minidsp_tide16.request_fast_metering`
   is listed.
+- **Developer Tools > States** - four `button.tide16_scene_*` entities
+  exist.  Pressing one recalls that slot; a slot you have never saved on
+  the device recalls nothing, which is not a fault.
 
 ## Then exclude it from the recorder
 
@@ -67,8 +74,7 @@ If upstream has moved past v0.28.0 the patch may fuzz or reject -
 
 ## What it changes
 
-Five files, ~180 lines, all additive - no upstream behaviour is
-modified.
+Six files, ~340 lines.  No upstream behaviour is modified.
 
 **`const.py`** - adds `FAST_RMS_INTERVAL` (0.25 s) and
 `FAST_METERING_HOLD` (3 s), plus the measurements the numbers came
@@ -96,7 +102,29 @@ positional `channel_names` list.
 
 **`sensor.py`** - adds `Tide16ChannelLevelsSensor`.
 
+**`button.py`** - adds `Tide16SceneButton`, four of them, one per scene
+slot the device stores.  The colours are the device's own names for the
+slots, in the order its web UI and front panel use them: red, green,
+yellow, blue = index 0-3.
+
+**`coordinator.py`** (again) - adds `async_recall_scene()`, which sends
+`set_scene`, and `async_set_preset()`, which sends `set_preset`.  Preset
+ids are **not** contiguous - the hardware here reports 1, 3..12 - so they
+are treated as opaque labels rather than an index to count through.  No
+entity is wired to `async_set_preset()` yet; it is there because the
+endpoint exists and the preset readout is otherwise read-only.
+
 **`services.yaml`** - new file; service description for the UI.
+
+### Why there is no "save scene"
+
+The device recalls with `set_scene` and **overwrites** with `save_scene`,
+and the stock web UI only ever sends the latter - so the endpoint that
+reads like the obvious one is the destructive one.  A save has no undo:
+it replaces a stored snapshot with whatever the box is doing right now.
+Exposing that as a Home Assistant button, one mis-tap away from a
+dashboard, is not worth it.  Save from the stock UI at
+`http://<host>:5050` instead.
 
 ### Why the hold is a deadline and not a flag
 

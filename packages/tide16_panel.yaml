@@ -1,7 +1,89 @@
-# Display-formatting helpers for the Tide16 front-panel card.
+# Display-formatting helpers and actions for the Tide16 front-panel card.
 # The panel renders the volume as a large integer part with a smaller
 # decimal part, so the two halves are split here rather than in the card.
+
+script:
+  # The panel's Vol: +/-N labels are RELATIVE steps, but Lovelace tap
+  # actions carry only literal data - no templates - so the arithmetic
+  # (and the clamp) has to live server-side. number.tide16_volume is the
+  # device's own dB scale: min -127.5, max 0, step 0.5.
+  tide16_volume_step:
+    alias: Tide16 Volume Step
+    # queued, not single: the labels are tapped in bursts and `single`
+    # would silently drop every tap that lands while one is in flight.
+    mode: queued
+    max: 12
+    fields:
+      delta:
+        name: Delta
+        description: dB to add to the current volume (negative to cut)
+        required: true
+        selector:
+          number:
+            min: -30
+            max: 30
+            step: 0.5
+    sequence:
+      - action: number.set_value
+        target:
+          entity_id: number.tide16_volume
+        data:
+          value: >
+            {% set v = states('number.tide16_volume') | float(0) + (delta | float(0)) %}
+            {{ [[v, -127.5] | max, 0.0] | min }}
+
+  # media_player.tide16 advertises TURN_OFF but not TURN_ON (supported
+  # features 2316 = SELECT_SOURCE + TURN_OFF + VOLUME_MUTE + VOLUME_SET),
+  # so this branches rather than using media_player.toggle - toggle would
+  # call an unsupported turn_on and raise.
+  tide16_power_toggle:
+    alias: Tide16 Power Toggle
+    mode: single
+    sequence:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: media_player.tide16
+                state: "on"
+            sequence:
+              - action: media_player.turn_off
+                target:
+                  entity_id: media_player.tide16
+        default:
+          - action: media_player.turn_on
+            target:
+              entity_id: media_player.tide16
+
 template:
+  # Is the incoming programme actually Dolby Atmos? The panel's on-screen
+  # Atmos badge is gated on this. Matched on substring rather than an
+  # exact state because the device reports the format free-form via
+  # decoder_stream_src_format (e.g. "Third-party channel-based PCM"), and
+  # the decoder_type attribute names the codec separately - either can
+  # carry the word.
+  - binary_sensor:
+      - name: "Tide16 Atmos"
+        unique_id: tide16_atmos
+        state: >
+          {% set st = states('sensor.tide16_stream') %}
+          {% set dec = state_attr('sensor.tide16_stream', 'decoder_type') %}
+          {{ 'atmos' in ((st ~ ' ' ~ (dec or '')) | lower) }}
+
+  # "48 kHz" for the Listening cell. Kept as a display string here rather
+  # than formatted in the card, for the same reason the volume is split
+  # into integer/decimal sensors: the panel prints it verbatim.
+  # 48000 -> "48 kHz", 44100 -> "44.1 kHz" - the .0 is dropped so the
+  # common case stays as short as the panel draws it.
+  - sensor:
+      - name: "Tide16 Sample Rate kHz"
+        unique_id: tide16_rate_khz
+        availability: >
+          {{ state_attr('sensor.tide16_stream','sample_rate') not in
+             [none, '', 'unknown', 'unavailable'] }}
+        state: >
+          {% set k = (state_attr('sensor.tide16_stream','sample_rate') | float(0) / 1000) | round(1) %}
+          {{ (k | int if k == k | round(0) else k) ~ ' kHz' }}
+
   - sensor:
       - name: "Tide16 Volume Integer"
         unique_id: tide16_volume_int

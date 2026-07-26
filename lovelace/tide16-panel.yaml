@@ -1,5 +1,6 @@
-# The complete front-panel view, exactly as it runs here - the bar meter
-# plus every live readout painted back onto the plate.
+# The complete front-panel view, exactly as it runs here - the bar meter,
+# the source selector, the scene buttons, the volume ring and every live
+# readout, painted back onto the plate.
 #
 # This is one entry in a dashboard's `views:` list. Drop it into a YAML
 # dashboard, or paste the `cards:` block into the raw editor of a
@@ -8,14 +9,48 @@
 #
 # Needs:
 #   - assets/ copied to config/www/tide16/
-#   - packages/tide16_panel.yaml (the split volume sensors)
+#   - packages/tide16_panel.yaml - the sensors this prints (split volume,
+#     sample rate, Atmos flag) plus the two scripts it calls:
+#     script.tide16_volume_step (the knob's relative dB steps, which have
+#     to be server-side because Lovelace tap data is literal and cannot
+#     read the current level) and script.tide16_power_toggle
+#   - the entities from integration/tide16-metering.patch, in particular
+#     button.tide16_scene_* for the four scene buttons
 #   - card-mod, from HACS, for the scale() wrapper below. Delete the
-#     card_mod block if you don't want that dependency - everything
-#     else works without it, the panel is just rendered full width.
+#     card_mod block if you don't want that dependency - everything else
+#     works without it, the panel is just rendered full width.
 #
-# Every position is a percentage of the 2622x542 plate, so the whole
+# Every position is a percentage of the 1990x400 plate, so the whole
 # thing scales together at any display size. The numbers were measured
 # off the artwork; changing the plate means re-measuring.
+  # ---------- TIDE16 FRONT PANEL (dedicated view) ----------
+  #
+  # REBUILT on base-T16.pxd (decoded 2026-07-26). Everything below is
+  # anchored to that plate's own CELLS, not to the old photo:
+  #
+  #   canvas            1990 x 400   (was 2622 x 542 - all % values moved)
+  #   display window    x 0..810, y 78..312
+  #     dB cell         x 123..344, y  78..162   ("dB" baked at x280-313, y96-117)
+  #     Source cell     x 123..344, y 162..225   (label baked at x134, y174)
+  #     meter cell      x 345..672, y  78..225   (empty - no baked 1-16 now)
+  #     Program cell    x 123..506, y 225..312   (label baked at x135, y237)
+  #     Listening cell  x 506..672, y 225..312   (label baked at x515, y237)
+  #     badges cell     x 675..810, y  78..312   (empty)
+  #   screen rules      y=162.5 and y=225.5
+  #   miniDSP logo ink  x 17..277, y 13..56
+  #   standby button    centre (1158, 200), top edge y=137
+  #   volume knob       centre (1681, 202.5), radius 113
+  #   silver end panel  x 1364..1989
+  #
+  # The new art is drawn at essentially the SAME scale as the device
+  # photos used to place the Program block (its two screen rules are 63px
+  # apart; the photos' are 63.5), so the row metrics measured off those
+  # photos carry over 1:1 - see the Program readout below.
+  #
+  # Two things the plate now does that the old photo didn't, and which
+  # deleted work here: "Program" is baked in (the readout no longer draws
+  # its own title) and there are no baked 1-16 channel numbers under the
+  # meter (its box is no longer pinned to them, so it just fills its cell).
   - title: Tide16
     path: tide16
     icon: mdi:audio-video
@@ -24,72 +59,177 @@
       - type: vertical-stack
         cards:
           - type: picture-elements
-            # ?v= is a cache-buster. plate.png was replaced in place with the
-            # bar-free version, and browsers happily kept serving the cached
-            # original - which looks like live bars animating BEHIND a set of
-            # static painted ones. Bump this whenever the plate art changes.
-            image: /local/tide16/plate.png?v=2
+            # New FILENAME, not a new ?v= - the old plate.png was once
+            # replaced in place and browsers kept serving the cached copy,
+            # which presents as live bars animating behind painted ones.
+            # A fresh path can't be got wrong.
+            image: /local/tide16/plate-v2.png
             card_mod:
               style: |
                 ha-card {
                   container-type: inline-size;
+                  /* HIDDEN, not visible: it clips the square-cornered plate
+                     to ha-card's 12px radius, so the white outline traces a
+                     rounded box around a rounded image instead of cutting
+                     across four square corners. This is only safe now that
+                     the channel legend sits INSIDE the plate - while it was
+                     at top:104% this clipped it away silently. */
+                  overflow: hidden !important;
                   /* scale the whole card - image AND positioned text together,
-                     so the glyph alignment cannot drift */
-                  transform: scale(0.75);
+                     so the glyph alignment cannot drift.
+                     The 50px of air above the plate is a translate, not a
+                     margin: a margin left ha-card's own box 50px taller than
+                     the image, and the outline dutifully traced THAT - a
+                     white line floating 50px below the plate's bottom edge.
+                     translateY moves the painted card without touching its
+                     box, and is not scaled by the scale() after it. */
+                  transform: translateY(50px) scale(0.75);
                   transform-origin: top center;
                   padding: 0 !important;
-                  border: none !important;
                   background: transparent !important;
                   box-shadow: none !important;
+                  /* 2px white line around the plate. OUTLINE, not border:
+                     a border sits inside the box and would shrink the image
+                     by 4px, shifting every percentage anchor on the card.
+                     An outline takes no layout space at all.
+                     It rides the 0.75 scale with the art, so it lands at
+                     1.5 CSS px on screen - raise to 2.667px here if you
+                     want a literal 2 screen px. */
+                  border: none !important;
+                  outline: 2px solid #fff;
+                  outline-offset: 0;
                 }
             elements:
-              # Live 16-channel meter, drawn over the bar-graph window that
-              # was erased from plate.png. The box below IS the geometry:
-              # left/top place it on the meter's own origin (canvas x=454,
-              # y=146) and width/height are exactly 16 bar-pitches by the
-              # bar travel (436 x 143 of the 2622x542 canvas). The channel
-              # numbers 1-16 below it are still baked into the plate, so
-              # nudging any of these four numbers will visibly de-register
-              # the bars from their labels.
-              # floor_db/ceiling_db default to -60/0 in the card. Idle noise
-              # floor measured here is -122 to -185 dB, so silence sits at
-              # zero height as it should; if real programme material turns
-              # out to peg or barely move the bars, this is the pair to
-              # tune, not the geometry.
+              # Live 16-channel meter. It now fills the empty cell at
+              # x345..672, y78..225 with an 8px inset. The old box had to
+              # be exactly 16 bar-pitches wide because the plate painted
+              # the numbers 1-16 underneath it; this plate paints nothing
+              # there, so the box is free geometry and the legend below
+              # the plate is what identifies the channels.
               - type: custom:tide16-bars
                 style:
-                  left: "17.315%"
-                  top: "26.937%"
-                  width: "16.629%"
-                  height: "26.384%"
+                  left: "17.739%"
+                  top: "21.500%"
+                  width: "15.628%"
+                  # 86..203, not 86..217: the element now draws the 1-16
+                  # numbers below its own box (base-T16.pxd doesn't bake
+                  # them), and /tmp/deets.png puts their cap-top at y207.7
+                  # with the cell rule at y225.
+                  height: "29.250%"
                   transform: translate(0, 0)
                   pointer-events: none
-              # Format logo. Positioned off Tide16-withdata.png, whose logo
-              # ink occupies canvas x454-590, y339-400 (137x62). The supplied
-              # artwork is a different official lockup - its ATMOS line is
-              # smaller and more tightly spaced, so it is 137x51 at the same
-              # width rather than 137x62. Matched on width and x-origin and
-              # centred in the reference's vertical band; NOT stretched to
-              # 62 tall, which would distort the mark by 22%.
-              # brightness(0.91) takes the pure-white asset down to the
-              # reference's ink luma of 231 rather than blowing out at 255.
-              - type: image
-                image: /local/tide16/dolby-atmos.png
+              # Channel assignment legend, one compact row under the plate.
+              # Lives INSIDE picture-elements so it inherits the 0.75 scale
+              # and the centring, and fills the dead band the transform
+              # leaves below the image (a transform doesn't shrink the
+              # layout box) - top >100% is that band. Left-aligned to the
+              # miniDSP logo ink, which starts at canvas x=17.
+              # Sized down to fit: at the default 1.2cqw the row is ~1950
+              # canvas px wide, but the dark faceplate only runs to the
+              # silver end panel at x=1364, so type and gap are scaled to
+              # ~0.65 to land inside x17..1285.
+              # Lightened one step across the board against the black
+              # faceplate: the speaker names go to white, and the two
+              # dimmed pieces - the "Output Channels:" heading and the
+              # output numbers - come up to the grey the names used to be.
+              - type: custom:tide16-channels
+                font_size: 0.78cqw
+                gap: 0.88cqw
+                color: "#FFFFFF"
+                index_color: "#B7B8B8"
+                label_color: "#B7B8B8"
                 style:
-                  left: "17.315%"
-                  top: "63.561%"
-                  width: "5.225%"
+                  left: "0.854%"
+                  top: "86.375%"
+                  width: "66%"
                   transform: translate(0, 0)
-                  filter: brightness(0.91)
-                  pointer-events: none
+              # Scene buttons, on the faceplate between the screen (ends
+              # x=810) and the standby button (starts x=1102).
+              # Buttons are 64 canvas px wide at 7:2, gap 1.190cqw - the
+              # whole cluster scaled to 80% of the size it was drawn at,
+              # button and gap alike, so the 7:2 shape and the spacing
+              # stay in proportion. `left` moved right by half the 16px
+              # the column lost, which keeps it centred where it was.
+              #
+              # The box is sized to the stack EXACTLY - 4 x 18.29 + 3 x
+              # 23.68 = 144.2 canvas px, i.e. 36.047% of the 400px canvas -
+              # so there is no slack for the buttons to sit in. That is
+              # what puts the heading a true `title_gap` off the red
+              # button: the title hangs at bottom:100% of this box, so it
+              # is only as far from the first button as the box top is,
+              # and matching title_gap to `gap` then makes that distance
+              # the same as the one between the buttons.
+              # Heading + buttons are then centred as one block on the
+              # display window (canvas y79..312): 189.2px of cluster on a
+              # 233px window leaves ~22px above the title and below the
+              # last button. Change a size here and both the height and
+              # the top must be recomputed - the block no longer absorbs
+              # slack on its own.
+              #
+              # These are the TIDE16's OWN scenes, not Home Assistant
+              # scenes: the device stores four whole-box snapshots (source,
+              # volume, Dirac preset, Dirac on/off, bass management,
+              # upmixer, Dolby/DTS) and names the slots by the colours on
+              # its front panel - red, green, yellow, blue = index 0..3,
+              # which is exactly the colour order drawn here.
+              # Recall goes through button.tide16_scene_*, which calls the
+              # device's set_scene. Saving is deliberately not reachable
+              # from this card: the device's save_scene OVERWRITES a slot
+              # with the current state and has no undo - use the stock web
+              # UI at http://192.168.1.212:5050 for that.
+              # As of 2026-07-26 only slots 0 (red) and 1 (green) have
+              # anything saved; yellow and blue recall nothing until they
+              # are saved on the device.
+              - type: custom:tide16-buttons
+                ratio: 7 / 2
+                gap: 1.190cqw
+                title: "Scenes:"
+                title_size: 1.070cqw
+                title_gap: 1.190cqw
+                # `hint` is the hover text - on a colour-only button it is
+                # the only name it has.
+                buttons:
+                  - color: "#D93A2B"
+                    hint: Recall red scene
+                    tap:
+                      action: button.press
+                      data: {entity_id: button.tide16_scene_red}
+                  - color: "#2FA84F"
+                    hint: Recall green scene
+                    tap:
+                      action: button.press
+                      data: {entity_id: button.tide16_scene_green}
+                  - color: "#E8C22E"
+                    hint: Recall yellow scene
+                    tap:
+                      action: button.press
+                      data: {entity_id: button.tide16_scene_yellow}
+                  - color: "#2F6FD0"
+                    hint: Recall blue scene
+                    tap:
+                      action: button.press
+                      data: {entity_id: button.tide16_scene_blue}
+                style:
+                  left: "42.513%"
+                  top: "36.473%"
+                  width: "3.216%"
+                  height: "36.047%"
+                  transform: translate(0, 0)
+              # Volume. "dB" is BAKED into the plate at x280-313, so the
+              # decimal is left-aligned to it (x=280) and the integer is
+              # RIGHT-aligned just short of it (x=274) - right-aligned so
+              # "-9.5" and "-42.5" both stay registered to the dB mark
+              # instead of the decimal point sliding.
+              # The two share a baseline by construction: integer digits
+              # end at y147.2, decimal digits at y147.6.
               - type: state-label
                 entity: sensor.tide16_volume_integer
                 style:
-                  right: "86.842%"
+                  right: "86.231%"
                   left: unset
-                  top: "24.762%"
+                  top: "24.189%"
                   transform: "translate(0, 0)"
-                  font-size: 4.081cqw
+                  font-size: 3.176cqw
                   font-weight: "300"
                   line-height: "1"
                   margin: "-8px"
@@ -100,81 +240,486 @@
                 entity: sensor.tide16_volume_decimal
                 prefix: "."
                 style:
-                  left: "13.196%"
-                  top: "32.453%"
+                  left: "14.070%"
+                  top: "30.259%"
                   transform: "translate(0, 0)"
-                  font-size: 2.136cqw
+                  font-size: 1.673cqw
                   font-weight: "300"
                   line-height: "1"
                   margin: "-8px"
                   white-space: nowrap
                   color: "#DFE0E0"
                   pointer-events: none
+              # Source value, left-aligned under the baked "Source" label
+              # (its ink starts at x=134) in the same cell.
               - type: state-label
                 entity: sensor.tide16_source
                 style:
-                  left: "7.589%"
-                  top: "53.540%"
+                  left: "6.734%"
+                  top: "49.929%"
                   transform: "translate(0, 0)"
-                  font-size: 0.953cqw
+                  font-size: 1.141cqw
                   font-weight: "300"
                   line-height: "1"
                   margin: "-8px"
                   white-space: nowrap
                   color: "#B7B8B8"
                   pointer-events: none
+              # Speaker layout, under the baked "Listening" label (x=515).
               - type: state-label
                 entity: sensor.tide16_speaker_config
                 style:
-                  left: "26.354%"
-                  top: "69.068%"
+                  left: "25.879%"
+                  top: "64.723%"
                   transform: "translate(0, 0)"
-                  font-size: 1.144cqw
+                  font-size: 1.216cqw
                   font-weight: "300"
                   line-height: "1"
                   margin: "-8px"
                   white-space: nowrap
                   color: "#BFC0C0"
                   pointer-events: none
-              # status ("ready") - was baked into the plate, now live
+              # Program readout - NO title any more: this plate bakes the
+              # word "Program" in at x135, y237. The rows hang off that
+              # baked label using the metrics measured from the device
+              # photo, which transfer 1:1 because the new art is drawn at
+              # the same scale: first row cap top 19px below the label's,
+              # then a 17px pitch, at ~0.88 the label's size (cap 12px).
+              # Rows land at y256 / 273 / 290; the last descender reaches
+              # 305.5 against a cell bottom of 312.
+              # Rate and Decoder are ATTRIBUTES of sensor.tide16_stream
+              # (sample_rate / decoder_type), not separate entities.
+              - type: custom:tide16-readout
+                size: 0.844cqw
+                row_gap: 0.010cqw
+                rows:
+                  - label: "Rate:"
+                    entity: sensor.tide16_stream
+                    attribute: sample_rate
+                  - label: "Decoder:"
+                    entity: sensor.tide16_stream
+                    attribute: decoder_type
+                  - label: "Stream:"
+                    entity: sensor.tide16_stream
+                style:
+                  left: "6.784%"
+                  top: "63.651%"
+                  transform: translate(0, 0)
+              # status ("ready") - placed off the device photo /tmp/ready.png
+              # by that photo's own screen rules: it sits in the Program
+              # cell to the RIGHT of the readout, level with the baked
+              # "Program" label rather than with the rows, so the long
+              # "Stream:" line passes underneath it.
               - type: state-label
                 entity: sensor.tide16_status
                 style:
-                  left: "7.704%"
-                  top: "62.177%"
+                  left: "18.010%"
+                  top: "60.320%"
                   transform: "translate(0, 0)"
-                  font-size: 0.725cqw
+                  font-size: 0.724cqw
                   font-weight: "300"
                   line-height: "1"
                   white-space: nowrap
                   margin: "-8px"
                   color: "#332050"
                   pointer-events: none
-              # Dirac Live indicator - lit when Dirac is engaged
+              # Sample rate, under the speaker layout in the Listening cell.
+              # Both come from /tmp/deets.png, which maps 1:1 onto this
+              # plate: its cell bottom derives to y311.4 against our 312,
+              # and its label cap-top to y236.3 against the baked
+              # "Listening" at 237. Cap tops: layout y260.9, rate y287.5.
+              - type: state-label
+                entity: sensor.tide16_sample_rate_khz
+                style:
+                  left: "25.879%"
+                  top: "71.431%"
+                  transform: "translate(0, 0)"
+                  font-size: 1.075cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#BFC0C0"
+                  pointer-events: none
+              # Preset column. The plate bakes no "Preset" label, so the
+              # heading is drawn as well. It occupies the LOWER half of the
+              # cell at x675..810, mirroring the Listening cell's three
+              # rows; the format badges moved up into the same cell's top
+              # half to make room.
+              - type: custom:tide16-readout
+                title: Preset
+                title_size: 0.844cqw
+                title_gap: "0"
+                style:
+                  left: "34.372%"
+                  top: "58.726%"
+                  transform: translate(0, 0)
+              - type: state-label
+                entity: sensor.tide16_preset
+                attribute: preset_index
+                style:
+                  left: "34.372%"
+                  top: "64.723%"
+                  transform: "translate(0, 0)"
+                  font-size: 1.216cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#BFC0C0"
+                  pointer-events: none
+              - type: state-label
+                entity: sensor.tide16_preset
+                style:
+                  left: "34.372%"
+                  top: "71.431%"
+                  transform: "translate(0, 0)"
+                  font-size: 1.075cqw
+                  font-weight: "300"
+                  line-height: "1"
+                  margin: "-8px"
+                  white-space: nowrap
+                  color: "#BFC0C0"
+                  pointer-events: none
+              # Format badges, stacked in the empty cell at x675..810 -
+              # the plate no longer carries the Dolby/dts/DIRAC/HDMI strip
+              # along its bottom, so this cell is where they live now.
+              # Both are centred on the cell's midline, x=742.5.
+              #
+              # Atmos is CONDITIONAL: drawing it unconditionally claimed
+              # Atmos while the stream read "Third-party channel-based PCM".
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.tide16_atmos
+                    state: "on"
+                elements:
+                  - type: image
+                    image: /local/tide16/dolby-atmos.png
+                    style:
+                      left: "34.698%"
+                      top: "23.938%"
+                      width: "5.226%"
+                      transform: translate(0, 0)
+                      filter: brightness(0.91)
+                      pointer-events: none
+              # Dirac Live mark - lit when Dirac is engaged, dimmed when not
               - type: conditional
                 conditions:
                   - entity: switch.tide16_dirac_live
                     state: "on"
                 elements:
                   - type: image
-                    image: /local/tide16/dirac.png
+                    image: /local/tide16/dirac-a.png
+                    tap_action:
+                      action: perform-action
+                      perform_action: switch.toggle
+                      target:
+                        entity_id: switch.tide16_dirac_live
                     style:
-                      left: "30.626%"
-                      top: "59.041%"
-                      width: "3.432%"
+                      left: "35.930%"
+                      top: "37.975%"
+                      width: "2.764%"
                       transform: "translate(0, 0)"
-                      pointer-events: none
+                      cursor: pointer
               - type: conditional
                 conditions:
                   - entity: switch.tide16_dirac_live
                     state_not: "on"
                 elements:
                   - type: image
-                    image: /local/tide16/dirac.png
+                    image: /local/tide16/dirac-a.png
+                    tap_action:
+                      action: perform-action
+                      perform_action: switch.toggle
+                      target:
+                        entity_id: switch.tide16_dirac_live
                     style:
-                      left: "30.626%"
-                      top: "59.041%"
-                      width: "3.432%"
+                      left: "35.930%"
+                      top: "37.975%"
+                      width: "2.764%"
                       transform: "translate(0, 0)"
-                      filter: "grayscale(1) brightness(0.45)"
-                      pointer-events: none
+                      # 80% grey when disabled: the mark's own ink peaks at
+                      # luma 103, so brightness(0.496) after grayscale lands
+                      # it on 51 - 20% luma, i.e. 80% grey.
+                      filter: "grayscale(1) brightness(0.496)"
+                      cursor: pointer
+              # MUTE flag - only while the device is actually muted. Sized
+              # to the plate's baked "Source" label (cap height 12 canvas
+              # px = 0.844cqw), vertically centred on the red scene button,
+              # and pinned 20px in from the screen's right edge (the window
+              # ends at x=810, so 790 -> a 60.302% right offset). The box
+              # shrink-wraps the word, so it's the RIGHT edge that's held
+              # and the flag can't drift with the text width.
+              - type: conditional
+                conditions:
+                  - entity: switch.tide16_mute
+                    state: "on"
+                elements:
+                  - type: custom:tide16-readout
+                    title: Mute
+                    title_color: "#D93A2B"
+                    title_size: 0.894cqw
+                    title_gap: "0"
+                    align: right
+                    style:
+                      right: "60.302%"
+                      left: unset
+                      top: "32.847%"
+                      transform: translate(0, 0)
+              # Source selector: 12 inputs as 6 columns x 2 rows of
+              # round-button + label, across the plate's top band.
+              # Left edge is the first output bar (canvas x=353); the row
+              # runs to the silver end panel at x=1364. The band between
+              # the image top and the display screen (y0..78) is 78px, so
+              # the grid is 2/3 of it (52px) centred in it -> y13..65,
+              # and with a 10px row gap each row is 21px.
+              # grid-auto-flow is column, so the alphabetical list fills
+              # DOWN each column and then moves right.
+              # Selection goes through media_player.select_source using
+              # the names from source_list - see tide16-bars.js for why
+              # the button.tide16_source_* entities are NOT used.
+              - type: custom:tide16-inputs
+                columns: 6
+                rows: 2
+                row_gap: 0.503cqw
+                # dot and label both up two canvas px from the original
+                # (13 -> 15, 14 -> 16 of 1990), so the button keeps sitting
+                # one px under its label the way it was drawn. The 21px
+                # rows still swallow it: 16px of type and a 15px dot on a
+                # 52px band.
+                dot: 0.754cqw
+                dot_gap: 0.302cqw
+                size: 0.804cqw
+                # matches the channel-name colour in the Output Channels
+                # legend below (tide16-channels `color`)
+                color: "#B7B8B8"
+                # the live source is drawn white + underlined, and bigger
+                # than the rest: 19 canvas px against 16. One px was the
+                # first try and it is invisible - the plate renders at
+                # about 0.67 CSS px per canvas px, so a single step is
+                # sub-pixel. Three is the most the 21px rows will take.
+                active_entity: media_player.tide16
+                active_attribute: source
+                active_color: "#FFFFFF"
+                active_size: 0.954cqw
+                background: "#333333"
+                # quoted: unquoted, YAML eats "#666666" as a comment and CSS
+                # falls back to currentColor, drawing a WHITE border
+                border: "1px solid #666666"
+                items:
+                  - text: "AppleTV"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "AppleTV"
+                  - text: "ARC / eARC"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "ARC / eARC"
+                  - text: "Bluetooth"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "Bluetooth"
+                  - text: "Comcast"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "Comcast"
+                  - text: "RCA"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "RCA"
+                  - text: "Roku"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "Roku"
+                  - text: "SPDIF 1"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "SPDIF 1"
+                  - text: "SPDIF 2"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "SPDIF 2"
+                  - text: "TOSLINK 1"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "TOSLINK 1"
+                  - text: "TOSLINK 2"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "TOSLINK 2"
+                  - text: "USB"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "USB"
+                  - text: "XLR"
+                    tap:
+                      action: media_player.select_source
+                      data:
+                        entity_id: media_player.tide16
+                        source: "XLR"
+                style:
+                  # 348, not the 353 the first output bar sits at: nudged
+                  # 5 canvas px left by eye. Width is unchanged, so all six
+                  # columns move together and the 168.5px column pitch is
+                  # untouched.
+                  left: "17.487%"
+                  top: "3.250%"
+                  width: "50.804%"
+                  height: "13.000%"
+                  transform: translate(0, 0)
+              # Bluetooth pairing, in the dead space at the right end of
+              # the source rows: column 6 (USB / XLR) runs out of ink at
+              # canvas x=1240 and the silver end panel starts at 1364, so
+              # the mark is centred in that 124px gap and on the two rows'
+              # own midline (y13..65, centre 39). 48 canvas px, the same
+              # height as the power glyph.
+              # The logo art is /tmp/bt.png with its white page cut away on
+              # the disc's own circle - the rune inside it is white too, so
+              # a colour key would have eaten the mark along with the page.
+              - type: custom:tide16-glyph
+                image: /local/tide16/bt.png
+                hint: Pair a Bluetooth device
+                tap:
+                  action: button.press
+                  data: {entity_id: button.tide16_bluetooth_pair}
+                style:
+                  left: "64.221%"
+                  top: "3.750%"
+                  width: "2.412%"
+                  transform: translate(0, 0)
+              # Power glyph over the standby button (centre x=1158, top
+              # edge y=137), 9px clear of it. Ceiling is the "Scenes:"
+              # heading, whose cap top computes to y=78 - this sits at 80.
+              # custom:tide16-glyph, not the built-in `image`: the built-in
+              # accepts a `title` but hangs it where the cursor never lands,
+              # so the power glyph was the one control on the plate with no
+              # working hover. See tide16-bars.js.
+              - type: custom:tide16-glyph
+                image: /local/tide16/power.png
+                hint: Power on/off
+                tap:
+                  action: script.tide16_power_toggle
+                style:
+                  left: "56.716%"
+                  top: "20.000%"
+                  width: "2.246%"
+                  transform: translate(0, 0)
+              # Reboot glyph, the standby button's mirror image: same 9px
+              # clear of the button but off its BOTTOM edge (the art's ring
+              # fades out by y=264, so y=273), and centred on the same
+              # vertical as the power glyph above - centre x=1150.9.
+              # Sized to the power glyph's HEIGHT, not its width: 48 canvas
+              # px tall either way, which is what makes the pair read as
+              # one size even though the source art is square (273x274)
+              # and the power glyph is taller than it is wide.
+              # /local/tide16/reboot.png is the supplied line art recoloured
+              # to the same #BFC0C0 as power.png, on transparency, with the
+              # word "REBOOT" cropped off.
+              # Live: a single tap restarts the processor. Same glyph
+              # element as the power icon, so the hover works for the same
+              # reason - see tide16-glyph in tide16-bars.js.
+              - type: custom:tide16-glyph
+                image: /local/tide16/reboot.png
+                hint: Reboot the Tide16
+                tap:
+                  action: button.press
+                  data: {entity_id: button.tide16_reboot}
+                style:
+                  left: "56.635%"
+                  top: "68.250%"
+                  width: "2.403%"
+                  transform: translate(0, 0)
+              # Volume/mute ring around the knob on the silver end panel.
+              # The box IS the knob: centre (1681, 202.5) radius 113, so
+              # left/top are centre-radius and width/height are the 226px
+              # diameter. Every label places itself outside that circle by
+              # clock hour - this box is the only geometry to re-measure
+              # if the plate art changes again. See tide16-bars.js.
+              - type: custom:tide16-knob-labels
+                gap: 0.458cqw
+                color: "#000"
+                size: 1.012cqw
+                weight: "700"
+                # `hint` is the hover text. Without one a label just
+                # repeats itself ("Vol:+5"), which tells you nothing you
+                # can't already read - so each one spells out the action.
+                labels:
+                  - at: 12
+                    text: ["Mute:", "On"]
+                    hint: Mute on
+                    tap:
+                      action: switch.turn_on
+                      data: {entity_id: switch.tide16_mute}
+                  - at: 6
+                    text: ["Mute:", "Off"]
+                    hint: Mute off
+                    tap:
+                      action: switch.turn_off
+                      data: {entity_id: switch.tide16_mute}
+                  # Relative dB steps - the maths and the -127.5..0 clamp
+                  # live in script.tide16_volume_step, because Lovelace
+                  # tap data is literal and can't read the current level.
+                  - at: 3
+                    text: "Vol:+10"
+                    hint: Volume up 10 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: 10}
+                  - at: 2
+                    text: "Vol:+5"
+                    hint: Volume up 5 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: 5}
+                  - at: 1
+                    text: "Vol:+2"
+                    hint: Volume up 2 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: 2}
+                  - at: 11
+                    text: "Vol:-2"
+                    hint: Volume down 2 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: -2}
+                  - at: 10
+                    text: "Vol:-5"
+                    hint: Volume down 5 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: -5}
+                  - at: 9
+                    text: "Vol:-10"
+                    hint: Volume down 10 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: -10}
+                style:
+                  left: "78.794%"
+                  top: "22.375%"
+                  width: "11.357%"
+                  height: "56.500%"
+                  transform: translate(0, 0)
