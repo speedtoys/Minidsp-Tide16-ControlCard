@@ -113,6 +113,12 @@ precision.
 The dB-to-bar-height mapping.  That is a display choice; the integration
 reports raw dB and the card decides how to draw it.
 
+It also does not invent a meter reference level.  The card currently
+infers one from `number.tide16_volume`, because the device does not
+report it over the API.  If miniDSP exposes those values, the right fix
+is a sensor here carrying the real number - not a better guess in the
+card.
+
 ## Measurements
 
 Taken on live hardware while validating this, in case they save someone

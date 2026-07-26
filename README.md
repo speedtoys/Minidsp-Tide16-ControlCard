@@ -154,6 +154,14 @@ if you do.  The `-60`..`0` defaults are only a fallback for when the
 volume entity is missing, and they will read low at normal listening
 levels.
 
+**This is interim.** Anchoring to the volume entity is an inference, not
+a reading - the device does not currently report its meter reference
+over the API.  When miniDSP exposes those values and the integration
+picks them up, these options become mirrors of real device state instead
+of estimates, and `range_db` in particular should stop being a number
+anyone tunes by eye.  The option names are chosen so that swap is a
+default change rather than a breaking one.
+
 **It only polls fast while you're looking.** While the element is on
 screen it calls `request_fast_metering` every second, raising the rate
 to 4 Hz on a 3-second lapsing grant.  Off screen it simply stops calling
