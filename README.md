@@ -7,9 +7,8 @@ with a **live 16-channel output meter**.
 
 ![the Tide16 panel, live](docs/screenshot.png)
 
-*Live Dolby Atmos 7.2.2 at -42 dB: 11 channels moving, five unused ones
-flat. Volume, source, speaker config, status and the Dirac indicator are
-live too - the plate itself is blank artwork.*
+*This image just shows my system in use, and I only use 11 channels.
+Yours will show all*
 
 ## What's here
 
