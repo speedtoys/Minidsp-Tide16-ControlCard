@@ -1,6 +1,6 @@
 diff -urN a/custom_components/minidsp_tide16/const.py b/custom_components/minidsp_tide16/const.py
---- a/custom_components/minidsp_tide16/const.py	2026-07-26 06:40:28.946632060 -0700
-+++ b/custom_components/minidsp_tide16/const.py	2026-07-26 06:40:28.952158399 -0700
+--- a/custom_components/minidsp_tide16/const.py	2026-07-26 07:39:21.345648306 -0700
++++ b/custom_components/minidsp_tide16/const.py	2026-07-26 07:39:21.350920197 -0700
 @@ -31,6 +31,30 @@
  RMS_REFRESH_INTERVAL = 5  # seconds - metering only, no push notification exists
  FULL_REFRESH_INTERVAL = 60  # seconds - safety-net resync of the pushed fields
@@ -63,8 +63,8 @@ diff -urN a/custom_components/minidsp_tide16/const.py b/custom_components/minids
  # label -> id mapping. Matches what was previously reverse-engineered live,
  # now cross-checked against the official docs.
 diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/minidsp_tide16/coordinator.py
---- a/custom_components/minidsp_tide16/coordinator.py	2026-07-26 06:40:28.948378881 -0700
-+++ b/custom_components/minidsp_tide16/coordinator.py	2026-07-26 06:40:28.953256399 -0700
+--- a/custom_components/minidsp_tide16/coordinator.py	2026-07-26 07:39:21.347156923 -0700
++++ b/custom_components/minidsp_tide16/coordinator.py	2026-07-26 07:39:21.351980065 -0700
 @@ -98,6 +98,8 @@
  from homeassistant.helpers.event import async_track_time_interval
  
@@ -110,7 +110,7 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
  class Tide16Coordinator:
      """Owns the persistent WebSocket connection and the last-known state."""
  
-@@ -159,6 +190,12 @@
+@@ -159,6 +190,18 @@
          self._rms_lock = asyncio.Lock()
          self._resync_lock = asyncio.Lock()
  
@@ -120,18 +120,34 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
 +        self._unsub_fast_refresh = None
 +        self._fast_until: float = 0.0
 +
++        # v22: the two sources that feed data["channel_names"]. Kept
++        # separate rather than merged on arrival because they arrive in
++        # either order and custom names must win regardless.
++        self._output_speakers: dict[str, str] = {}
++        self._custom_port_names: dict[str, str] = {}
++
          # v19: separate from self.data["volume_db"] (the last CONFIRMED
          # value) - this tracks the target of a volume command that hasn't
          # been confirmed yet, so back-to-back Volume +/- button presses
-@@ -180,6 +217,7 @@
+@@ -180,6 +223,8 @@
              "source": None,
              "source_names": {},  # source id -> live display name (get_source_names)
              "signal_peak_db": None,
 +            "channel_db": None,  # v22: per-channel output levels, 16 floats
++            "channel_names": [],  # v22: 1-based output index -> speaker name
              "bt_paired": None,
              "bt_track_title": None,
              "bt_track_artist": None,
-@@ -263,6 +301,9 @@
+@@ -209,6 +254,8 @@
+             "get_mute": self._apply_mute,
+             "get_source": self._apply_source,
+             "get_source_names": self._apply_source_names,
++            "get_output_speakers": self._apply_output_speakers,
++            "get_custom_out_port_names": self._apply_custom_out_port_names,
+             "get_bluetooth_status": self._apply_bluetooth,
+             "get_stream_properties": self._apply_stream,
+             "get_speaker_config_number": self._apply_speaker_config,
+@@ -263,6 +310,9 @@
          if self._unsub_rms_refresh is not None:
              self._unsub_rms_refresh()
              self._unsub_rms_refresh = None
@@ -141,7 +157,7 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
          if self._unsub_full_refresh is not None:
              self._unsub_full_refresh()
              self._unsub_full_refresh = None
-@@ -280,6 +321,42 @@
+@@ -280,6 +330,42 @@
              self.hass.async_create_task(self._request_rms_state())
  
      @callback
@@ -184,7 +200,81 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
      def _async_full_refresh(self, _now) -> None:
          if self._ws is not None and not self._ws.closed:
              self.hass.async_create_task(self._request_resync_state())
-@@ -550,7 +627,9 @@
+@@ -349,6 +435,8 @@
+         push notification (no need to keep re-requesting these)."""
+         for endpoint in (
+             "get_source_names",
++            "get_output_speakers",
++            "get_custom_out_port_names",
+             "get_ip",
+             "get_bluetooth_status",
+             "get_stream_properties",
+@@ -481,6 +569,64 @@
+         if isinstance(data, dict):
+             self.data["source_names"] = {k: v for k, v in data.items() if isinstance(v, str)}
+ 
++    def _apply_output_speakers(self, data) -> None:
++        """Which speaker each physical output is assigned to
++        (get_output_speakers), e.g. {"1": "LeftFront", ..., "11": "Sub2"}.
++
++        This is the real assignment, not an inference from
++        speaker_config: on a 7.2.2 setup the device returns exactly 11
++        entries and outputs 12-16 are simply absent from the map. That
++        distinction matters - an absent output is unassigned, which is
++        not the same as an assigned one that happens to be silent, and
++        both read -122.5 in the metering.
++
++        Keys are the same 1-based index _channels_db() sorts by, so the
++        two line up positionally without any further mapping.
++        """
++        if not isinstance(data, dict):
++            return
++        self._output_speakers = {
++            str(k): v for k, v in data.items() if isinstance(v, str) and v
++        }
++        self._rebuild_channel_names()
++
++    def _apply_custom_out_port_names(self, data) -> None:
++        """User-assigned output port names (get_custom_out_port_names).
++
++        Empty on a stock unit. When set, these are what the owner called
++        the port on the Tide16 itself, so they win over the stock
++        speaker name - same reasoning as _apply_source_names.
++        """
++        if not isinstance(data, dict):
++            return
++        self._custom_port_names = {
++            str(k): v for k, v in data.items() if isinstance(v, str) and v
++        }
++        self._rebuild_channel_names()
++
++    def _rebuild_channel_names(self) -> None:
++        """Flatten the two name sources into a positional list.
++
++        A list rather than a dict because it is consumed alongside
++        channel_db, which is already a positional list - handing a
++        dashboard two structures it has to correlate by key would just
++        move this join into every consumer. Unassigned outputs are None,
++        never a placeholder string, so a consumer can tell "no speaker
++        here" from "a speaker called something".
++        """
++        stock = getattr(self, "_output_speakers", {})
++        custom = getattr(self, "_custom_port_names", {})
++        if not stock and not custom:
++            return
++        count = max(
++            (int(k) for k in list(stock) + list(custom) if k.isdigit()),
++            default=0,
++        )
++        self.data["channel_names"] = [
++            custom.get(str(i)) or stock.get(str(i)) or None
++            for i in range(1, count + 1)
++        ]
++
+     def _apply_bluetooth(self, data) -> None:
+         if not isinstance(data, dict):
+             return
+@@ -550,7 +696,9 @@
  
      def _apply_rms_block_db(self, data) -> None:
          if isinstance(data, dict):
@@ -196,8 +286,8 @@ diff -urN a/custom_components/minidsp_tide16/coordinator.py b/custom_components/
      def _set_connected(self, connected: bool, status: str) -> None:
          self.data["connected"] = connected
 diff -urN a/custom_components/minidsp_tide16/__init__.py b/custom_components/minidsp_tide16/__init__.py
---- a/custom_components/minidsp_tide16/__init__.py	2026-07-26 06:40:28.944056895 -0700
-+++ b/custom_components/minidsp_tide16/__init__.py	2026-07-26 06:40:28.951077627 -0700
+--- a/custom_components/minidsp_tide16/__init__.py	2026-07-26 07:39:21.343636023 -0700
++++ b/custom_components/minidsp_tide16/__init__.py	2026-07-26 07:39:21.349859189 -0700
 @@ -63,7 +63,7 @@
  from homeassistant import config_entries
  from homeassistant.config_entries import ConfigEntry
@@ -251,8 +341,8 @@ diff -urN a/custom_components/minidsp_tide16/__init__.py b/custom_components/min
      return True
  
 diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minidsp_tide16/sensor.py
---- a/custom_components/minidsp_tide16/sensor.py	2026-07-26 06:40:28.949944204 -0700
-+++ b/custom_components/minidsp_tide16/sensor.py	2026-07-26 06:40:28.955332782 -0700
+--- a/custom_components/minidsp_tide16/sensor.py	2026-07-26 07:39:21.348600554 -0700
++++ b/custom_components/minidsp_tide16/sensor.py	2026-07-26 07:39:21.353082141 -0700
 @@ -35,6 +35,7 @@
      async_add_entities(
          [
@@ -261,7 +351,7 @@ diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minid
              Tide16SourceSensor(coordinator),
              Tide16BluetoothSensor(coordinator),
              Tide16StreamSensor(coordinator),
-@@ -71,6 +72,42 @@
+@@ -71,6 +72,48 @@
          return self._coordinator.data.get("status")
  
  
@@ -272,6 +362,11 @@ diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minid
 +    on purpose: the card wants them as one coherent frame, and while the
 +    meter is being watched this updates 4x/sec - one entity churning at
 +    that rate is very different from sixteen.
++
++    `channel_names` is the speaker assigned to each output, positionally
++    aligned with `channels`, with None for outputs the device has not
++    assigned. It is shorter than `channels` whenever the layout uses
++    fewer than 16 outputs - zip() the two rather than indexing blindly.
 +
 +    The state itself is the peak, rounded to whole dB. That rounding is
 +    load-bearing: the state is what the recorder would store, and an
@@ -297,6 +392,7 @@ diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minid
 +    def extra_state_attributes(self) -> dict:
 +        return {
 +            "channels": self._coordinator.data.get("channel_db"),
++            "channel_names": self._coordinator.data.get("channel_names"),
 +            "peak_db": self._coordinator.data.get("signal_peak_db"),
 +        }
 +
@@ -306,7 +402,7 @@ diff -urN a/custom_components/minidsp_tide16/sensor.py b/custom_components/minid
      _attr_unique_id = "minidsp_tide16_source"
 diff -urN a/custom_components/minidsp_tide16/services.yaml b/custom_components/minidsp_tide16/services.yaml
 --- a/custom_components/minidsp_tide16/services.yaml	1969-12-31 16:00:00.000000000 -0800
-+++ b/custom_components/minidsp_tide16/services.yaml	2026-07-26 06:40:28.957191240 -0700
++++ b/custom_components/minidsp_tide16/services.yaml	2026-07-26 07:39:21.354156146 -0700
 @@ -0,0 +1,8 @@
 +request_fast_metering:
 +  name: Request fast metering

@@ -175,6 +175,33 @@ neither alone catches both cases.
 During true silence every channel reads exactly `-122.5` dB, so the bars
 sit at zero.
 
+Bars past the end of your layout also sit at zero, and that is not the
+same thing.  The device reports which speaker each output is assigned
+to, so `sensor.tide16_channel_levels` carries a `channel_names`
+attribute alongside `channels`:
+
+```
+1  LeftFront          9   LeftFrontOverhead
+2  RightFront         10  RightFrontOverhead
+3  Center             11  Sub2
+4  Sub                12-16  not present
+5  LeftSurround
+6  RightSurround
+7  RearLeftSurround
+8  RearRightSurround
+```
+
+That is a 7.2.2 layout, so the device returns exactly 11 entries and
+outputs 12-16 are simply **absent** from the map - unassigned, not
+assigned-and-silent.  Both read `-122.5`, which is why the names are
+worth having.
+
+`channel_names` is positional against `channels` and is **shorter**
+whenever the layout uses fewer than 16 outputs, so `zip()` the two
+rather than indexing blindly.  Entries are `null` for an output the
+device left unassigned.  If you have renamed ports on the Tide16 itself,
+those names win over the stock speaker names.
+
 The trap: an idle link looks identical to a working one at every level
 *except* the metering itself.  The `sensor.tide16_stream` entity reports
 the negotiated format and `speaker_config` reports 7.2.2 with nothing

@@ -5,7 +5,7 @@ integration:
 
 | | |
 |---|---|
-| `sensor.tide16_channel_levels` | All 16 channel levels, as one frame |
+| `sensor.tide16_channel_levels` | All 16 channel levels, as one frame, plus the speaker each output is assigned to |
 | `minidsp_tide16.request_fast_metering` | Temporarily raises the poll rate to 4 Hz |
 
 The `tide16-metering.patch` file adds them to
@@ -40,7 +40,8 @@ the additions, and `@@` headers give the line numbers to add them at.
 ## Verify
 
 - **Developer Tools > States** - `sensor.tide16_channel_levels` exists,
-  and its `channels` attribute is a list of 16 numbers.
+  its `channels` attribute is a list of 16 numbers, and `channel_names`
+  names your speakers (`LeftFront`, `Center`, `Sub`...).
 - **Developer Tools > Actions** - `minidsp_tide16.request_fast_metering`
   is listed.
 
@@ -82,6 +83,16 @@ the wrong channel if the device returns them out of order.  Also adds
 
 **`__init__.py`** - registers the service, guarded by `has_service()`
 so a reload doesn't double-register.
+
+Also adds `_apply_output_speakers()` and
+`_apply_custom_out_port_names()`, fed by two endpoints the integration
+did not previously call.  `get_output_speakers` returns the speaker
+assigned to each output (`{"1": "LeftFront", ... "11": "Sub2"}`), keyed
+by the same 1-based index the metering is sorted by;
+`get_custom_out_port_names` returns any names the owner set on the
+device itself, which win over the stock ones.  Both are requested once
+at startup alongside `get_source_names`, and flattened into a
+positional `channel_names` list.
 
 **`sensor.py`** - adds `Tide16ChannelLevelsSensor`.
 
