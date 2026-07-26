@@ -149,11 +149,10 @@ alone catches both cases.
 ## Reading the meter
 
 During true silence every channel reads exactly `-122.5` dB, so the bars
-sit at zero. Unused channels read `-122.5` too: a 7.2.2 stream shows 11
-live bars and five flat ones, which is correct.
+sit at zero.
 
-The opposite trap is worse. An idle link looks identical to a working
-one at every level *except* the metering itself -
+The trap: an idle link looks identical to a working one at every level
+*except* the metering itself -
 `sensor.tide16_stream` reports the negotiated format and
 `speaker_config` reports 7.2.2 with nothing playing at all. Only the
 metering moving proves playback.
