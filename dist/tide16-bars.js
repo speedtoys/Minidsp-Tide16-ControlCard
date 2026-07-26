@@ -1257,8 +1257,14 @@ if (!customElements.get('tide16-inputs')) {
   customElements.define('tide16-inputs', Tide16Inputs);
 }
 
+// Bumped with the repo tag. Printed on load so a stale cached copy is
+// one glance in the console rather than a guess - the frontend caches
+// /local/ hard, and the resource URL's ?v= is the only thing that busts
+// it.
+const TIDE16_VERSION = '1.1.0';
+
 console.info(
-  '%c TIDE16 %c live 16-channel meter + channel legend + scene buttons + knob labels ',
+  `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
   'color:#0b1013;background:#ABACAC;font-weight:700',
   'color:#ABACAC;background:#0b1013'
 );
