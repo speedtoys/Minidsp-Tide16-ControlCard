@@ -5,17 +5,17 @@ integration:
 
 | | |
 |---|---|
-| `sensor.tide16_channel_levels` | all 16 channel levels, as one frame |
-| `minidsp_tide16.request_fast_metering` | temporarily raises the poll rate to 4 Hz |
+| `sensor.tide16_channel_levels` | All 16 channel levels, as one frame |
+| `minidsp_tide16.request_fast_metering` | Temporarily raises the poll rate to 4 Hz |
 
-`tide16-metering.patch` adds them to
+The `tide16-metering.patch` file adds them to
 [GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
 **v0.28.0**.
 
 **Why a diff and not the finished files?** Because the finished files
-are 1,335 lines, only 202 of them mine. Shipping them would republish
+are 1,335 lines, only 202 of them mine.  Shipping them would republish
 Gael's integration under a different name, which is not what this repo
-is. The diff carries my 202 lines and nothing else of substance - you
+is.  The diff carries my 202 lines and nothing else of substance - you
 install his integration normally, from his repo, and this adds to it.
 
 ## Apply
@@ -30,11 +30,11 @@ patch -p1 < /path/to/tide16-metering.patch
 
 Then restart Home Assistant.
 
-It touches four files and creates `services.yaml`. Every hunk is
+It touches four files and creates `services.yaml`.  Every hunk is
 additive - no existing line is changed or removed - so if you have local
 edits to those files the patch should still land.
 
-No `patch` command? It's a readable diff: lines starting with `+` are
+No `patch` command?  It's a readable diff: lines starting with `+` are
 the additions, and `@@` headers give the line numbers to add them at.
 
 ## Verify
@@ -47,7 +47,7 @@ the additions, and `@@` headers give the line numbers to add them at.
 ## Then exclude it from the recorder
 
 While the card is on screen this entity updates **4x/sec**, each update
-carrying a 16-float attribute. In `configuration.yaml`:
+carrying a 16-float attribute.  In `configuration.yaml`:
 
 ```yaml
 recorder:
@@ -59,7 +59,7 @@ recorder:
 ## After an upstream update
 
 HACS overwrites `custom_components/minidsp_tide16` whenever it updates
-the integration, taking these changes with it. Reapply and restart.
+the integration, taking these changes with it.  Reapply and restart.
 
 If upstream has moved past v0.28.0 the patch may fuzz or reject -
 `patch` will say so, and only the affected hunk needs placing by hand.
@@ -75,9 +75,9 @@ from.
 
 **`coordinator.py`** - adds `_channels_db()`, which keeps the
 per-channel values that `_peak_db()` was already receiving and
-discarding. They are ordered by the device's own 1-based `index` field
+discarding.  They are ordered by the device's own 1-based `index` field
 rather than by array position, so a bar can never end up attached to
-the wrong channel if the device returns them out of order. Also adds
+the wrong channel if the device returns them out of order.  Also adds
 `async_request_fast_metering()` and its self-cancelling timer.
 
 **`__init__.py`** - registers the service, guarded by `has_service()`
@@ -89,12 +89,12 @@ so a reload doesn't double-register.
 
 ### Why the hold is a deadline and not a flag
 
-`async_request_fast_metering()` pushes out a timestamp. Every exit from
-fast polling is that deadline lapsing, so nothing has to actively cancel
-anything - a card that vanishes without saying so (tab closed, view
-switched, lid shut, background tab throttled, card crashed) costs at
-most 3 seconds of extra polling. There is no state that can get stuck
-fast, and there is deliberately no "stop" service. The idle
+The `async_request_fast_metering()` call pushes out a timestamp.  Every
+exit from fast polling is that deadline lapsing, so nothing has to
+actively cancel anything - a card that vanishes without saying so (tab
+closed, view switched, lid shut, background tab throttled, card crashed)
+costs at most 3 seconds of extra polling.  There is no state that can
+get stuck fast, and there is deliberately no "stop" service.  The idle
 `RMS_REFRESH_INTERVAL` timer is never touched and resumes as the cadence
 the moment the fast timer removes itself.
 
@@ -105,12 +105,12 @@ A meter wants them as one coherent frame, and one entity churning at
 
 The sensor's *state* is the peak rounded to whole dB, because the state
 is what the recorder would store and an unrounded peak changes on
-essentially every poll. The `channels` attribute carries the real
+essentially every poll.  The `channels` attribute carries the real
 precision.
 
 ### What it deliberately does not add
 
-The dB-to-bar-height mapping. That is a display choice; the integration
+The dB-to-bar-height mapping.  That is a display choice; the integration
 reports raw dB and the card decides how to draw it.
 
 ## Measurements
@@ -122,20 +122,20 @@ Polling at 3.86 Hz, 40/40 replies: median round-trip **3.7 ms**, p95
 **36 ms**, max **104 ms** - comfortably inside the 250 ms budget.
 
 Real content (Dolby Digital Plus 7.2.2, -42 dB master): p05 -80.6,
-median -62.7, p95 -46.0, max **-42.9** dB. That max landing on the
+median -62.7, p95 -46.0, max **-42.9** dB.  That max landing on the
 master volume setting is why the card anchors its scale to
 `number.tide16_volume` instead of to fixed dB values.
 
 **The trap:** an idle link looks identical to a working one at every
-level *except* the metering itself. `sensor.tide16_stream` reports the
-negotiated format and `speaker_config` reports 7.2.2 with nothing
-playing at all, so both look like proof of playback and are not. During
-true silence every channel reads exactly `-122.5`, which is easily
-mistaken for "the firmware never populates this array". Only the
+level *except* the metering itself.  The `sensor.tide16_stream` entity
+reports the negotiated format and `speaker_config` reports 7.2.2 with
+nothing playing at all, so both look like proof of playback and are not.
+During true silence every channel reads exactly `-122.5`, which is
+easily mistaken for "the firmware never populates this array".  Only the
 metering moving proves playback.
 
 ## Upstreaming
 
-These changes are offered upstream. If they land in a future release of
+These changes are offered upstream.  If they land in a future release of
 Gael's integration this directory goes away, and the card will simply
 require that version.
