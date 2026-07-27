@@ -1539,16 +1539,27 @@ class Tide16Readout extends HTMLElement {
     });
   }
 
+  /* Every way a value can be absent lands on `placeholder`: no hass yet,
+     no such entity, no such attribute, or a state of unknown/unavailable.
+     That matters on a cold start - for ~15s after a restart these
+     entities do not exist at all, and for ~12s after that they read
+     `unknown`. A built-in state-label prints that word; this prints "-"
+     from the very first paint.
+
+     `prefix` is applied ONLY to a real value. The volume's decimal half
+     uses it for the point, so a missing reading draws nothing rather
+     than a stray ".". */
   _value(row) {
     // A row with no entity is static text - it has nothing to be missing.
     if (!row.entity) return '';
-    const gone = this._cfg.placeholder;
+    const gone = row.placeholder == null ? this._cfg.placeholder : row.placeholder;
     if (!this._hass) return gone;
     const st = this._hass.states[row.entity];
     if (!st) return gone;
     const v = row.attribute ? st.attributes[row.attribute] : st.state;
     if (v === undefined || v === null || v === '') return gone;
-    return ['unknown', 'unavailable'].includes(String(v)) ? gone : String(v);
+    if (['unknown', 'unavailable'].includes(String(v))) return gone;
+    return (row.prefix == null ? '' : String(row.prefix)) + String(v);
   }
 
   getCardSize() {
@@ -1793,7 +1804,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.6';
+const TIDE16_VERSION = '1.1.7';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

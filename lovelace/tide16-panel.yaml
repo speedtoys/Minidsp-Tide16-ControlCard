@@ -363,100 +363,72 @@
               # The two share a baseline by construction: integer digits
               # end at y147.2, decimal digits at y147.6.
               #
-              # SPLIT IN TWO by availability. That baseline construction
-              # only holds for DIGITS: a hyphen's ink is centred on the em
-              # box rather than sitting on the baseline, so drawing the
-              # placeholder through the same two elements put the big dash
-              # high, the small dash lower and the decimal point lower
-              # still - three stray marks instead of "-.-". When the
-              # device is down the whole reading is therefore drawn as one
-              # string at one size, and reads as a number should.
               #
-              # Both branches key off sensor.tide16_volume_integer being
-              # its own placeholder; a real volume can never render "-".
-              - type: conditional
-                conditions:
+              # Drawn as readouts, not state-labels, and with NO
+              # conditional. The integer's placeholder is the whole
+              # "-.-" at one size, and the decimal's is empty, so a
+              # missing reading shows one clean string instead of a big
+              # hyphen, a small hyphen and a dot on three different
+              # baselines (which is what feeding "-" through both halves
+              # produced - a hyphen's ink is centred on the em box rather
+              # than sitting on the baseline).
+              #
+              # This also covers the cold start. For ~15s after a restart
+              # these sensors do not exist and for ~12s more they read
+              # `unknown`; a state-label prints "Unavailable"/"Unknown"
+              # through all of it, a readout prints "-" from first paint.
+              #
+              # The decimal's point comes from `prefix`, which is applied
+              # only to a real value - the sensor returns digits only,
+              # because HA coerces a leading "." into "0.5".
+              - type: custom:tide16-readout
+                size: 3.176cqw
+                color: "#E7E8E8"
+                row_gap: "0"
+                align: right
+                rows:
                   - entity: sensor.tide16_volume_integer
-                    state_not: "-"
-                elements:
-                  - type: state-label
-                    entity: sensor.tide16_volume_integer
-                    style:
-                      right: "86.231%"
-                      left: unset
-                      top: "24.189%"
-                      transform: "translate(0, 0)"
-                      font-size: 3.176cqw
-                      font-weight: "300"
-                      line-height: "1"
-                      margin: "-8px"
-                      white-space: nowrap
-                      color: "#E7E8E8"
-                      pointer-events: none
-                  - type: state-label
-                    entity: sensor.tide16_volume_decimal
+                    placeholder: "-.-"
+                style:
+                  right: "86.231%"
+                  left: unset
+                  top: "24.189%"
+                  transform: translate(0, 0)
+              - type: custom:tide16-readout
+                size: 1.673cqw
+                color: "#DFE0E0"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_volume_decimal
                     prefix: "."
-                    style:
-                      left: "14.070%"
-                      top: "30.259%"
-                      transform: "translate(0, 0)"
-                      font-size: 1.673cqw
-                      font-weight: "300"
-                      line-height: "1"
-                      margin: "-8px"
-                      white-space: nowrap
-                      color: "#DFE0E0"
-                      pointer-events: none
-              # Placeholder reading. tide16-readout rather than a
-              # state-label because the text is literal, and its box takes
-              # the integer's own right/top unchanged - the element has no
-              # padding to cancel, so "-8px" is simply absent rather than
-              # different.
-              - type: conditional
-                conditions:
-                  - entity: sensor.tide16_volume_integer
-                    state: "-"
-                elements:
-                  - type: custom:tide16-readout
-                    title: "-.-"
-                    title_size: 3.176cqw
-                    title_color: "#E7E8E8"
-                    title_gap: "0"
-                    align: right
-                    style:
-                      right: "86.231%"
-                      left: unset
-                      top: "24.189%"
-                      transform: translate(0, 0)
+                    placeholder: ""
+                style:
+                  left: "14.070%"
+                  top: "30.259%"
+                  transform: translate(0, 0)
               # Source value, left-aligned under the baked "Source" label
               # (its ink starts at x=134) in the same cell.
-              - type: state-label
-                entity: sensor.tide16_source_display
+              - type: custom:tide16-readout
+                size: 1.141cqw
+                color: "#B7B8B8"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_source
                 style:
                   left: "6.734%"
                   top: "49.929%"
                   transform: "translate(0, 0)"
-                  font-size: 1.141cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#B7B8B8"
-                  pointer-events: none
               # Speaker layout, under the baked "Listening" label (x=515).
-              - type: state-label
-                entity: sensor.tide16_speaker_config_display
+              - type: custom:tide16-readout
+                size: 1.216cqw
+                color: "#BFC0C0"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_speaker_config
                 style:
                   left: "25.879%"
                   top: "64.723%"
                   transform: "translate(0, 0)"
-                  font-size: 1.216cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#BFC0C0"
-                  pointer-events: none
               # Program readout - NO title any more: this plate bakes the
               # word "Program" in at x135, y237. The rows hang off that
               # baked label using the metrics measured from the device
@@ -488,37 +460,31 @@
               # cell to the RIGHT of the readout, level with the baked
               # "Program" label rather than with the rows, so the long
               # "Stream:" line passes underneath it.
-              - type: state-label
-                entity: sensor.tide16_status
+              - type: custom:tide16-readout
+                size: 0.724cqw
+                color: "#332050"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_status
                 style:
                   left: "18.010%"
                   top: "60.320%"
                   transform: "translate(0, 0)"
-                  font-size: 0.724cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  white-space: nowrap
-                  margin: "-8px"
-                  color: "#332050"
-                  pointer-events: none
               # Sample rate, under the speaker layout in the Listening cell.
               # Both come from /tmp/deets.png, which maps 1:1 onto this
               # plate: its cell bottom derives to y311.4 against our 312,
               # and its label cap-top to y236.3 against the baked
               # "Listening" at 237. Cap tops: layout y260.9, rate y287.5.
-              - type: state-label
-                entity: sensor.tide16_sample_rate_khz
+              - type: custom:tide16-readout
+                size: 1.075cqw
+                color: "#BFC0C0"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_sample_rate_khz
                 style:
                   left: "25.879%"
                   top: "71.431%"
                   transform: "translate(0, 0)"
-                  font-size: 1.075cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#BFC0C0"
-                  pointer-events: none
               # Preset column. The plate bakes no "Preset" label, so the
               # heading is drawn as well. It occupies the LOWER half of the
               # cell at x675..810, mirroring the Listening cell's three
@@ -532,33 +498,27 @@
                   left: "34.372%"
                   top: "58.726%"
                   transform: translate(0, 0)
-              - type: state-label
-                entity: sensor.tide16_preset_display
-                attribute: preset_index
+              - type: custom:tide16-readout
+                size: 1.216cqw
+                color: "#BFC0C0"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_preset
+                    attribute: preset_index
                 style:
                   left: "34.372%"
                   top: "64.723%"
                   transform: "translate(0, 0)"
-                  font-size: 1.216cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#BFC0C0"
-                  pointer-events: none
-              - type: state-label
-                entity: sensor.tide16_preset_display
+              - type: custom:tide16-readout
+                size: 1.075cqw
+                color: "#BFC0C0"
+                row_gap: "0"
+                rows:
+                  - entity: sensor.tide16_preset
                 style:
                   left: "34.372%"
                   top: "71.431%"
                   transform: "translate(0, 0)"
-                  font-size: 1.075cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#BFC0C0"
-                  pointer-events: none
               # Format badges, stacked in the empty cell at x675..810 -
               # the plate no longer carries the Dolby/dts/DIRAC/HDMI strip
               # along its bottom, so this cell is where they live now.
@@ -973,7 +933,7 @@
               # A readout with a title and no rows is the card's
               # static-text element.
               - type: custom:tide16-readout
-                title: v1.1.6
+                title: v1.1.7
                 title_size: 0.980cqw
                 title_color: "#000"
                 title_gap: "0"

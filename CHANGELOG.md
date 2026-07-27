@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.1.7 - 2026-07-27
+
+**"Unknown" can no longer appear on the panel.**  A cold start has two
+windows where there is nothing to show, and only one of them was covered:
+
+    t+6s  -> t+21s    the entities do not exist yet
+    t+21s -> t+34s    they exist and read `unknown`
+
+No template can fix the first window - there is no entity to template -
+so the placeholder had to move into the card.  Every plain `state-label`
+on the plate is a `tide16-readout` row now, and a row falls back to its
+placeholder for *all* of: no hass yet, no such entity, no such attribute,
+and a state of `unknown` or `unavailable`.  The panel draws its dashes
+from the first paint.
+
+Two things fall out of that:
+
+- **The volume needs no `conditional` blocks.**  The integer's
+  placeholder is the whole `-.-` at one size and the decimal's is empty,
+  so a missing reading is one clean string rather than a big hyphen, a
+  small hyphen and a dot on three different baselines.
+- **The `*_display` mirror sensors are gone.**  They existed only to
+  inject a dash, so the card reads `sensor.tide16_source`,
+  `_speaker_config` and `_preset` directly.
+
+**Fixed:** the decimal half printed `.-` when the unit was off.  The
+template sensors were returning a literal `"-"`, which looks like a real
+reading to everything downstream, so the row's `.` prefix was applied to
+it.  The sensors are `availability` gated again and substitute nothing -
+the card is the single owner of "there is no value", and `prefix` is only
+ever applied to a real one.
+
+Anchors are unchanged: all six converted elements land within 0.02 canvas
+px of where they were, so dropping `state-label`'s `-8px` padding
+cancellation moved nothing.
+
 ## v1.1.6 - 2026-07-27
 
 **The power and reboot glyphs are panel buttons now** - a shallow dish
