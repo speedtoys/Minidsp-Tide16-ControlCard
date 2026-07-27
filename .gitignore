@@ -8,3 +8,11 @@ Thumbs.db
 # serves it directly - but keep the cruft out if anyone adds tooling)
 node_modules/
 *.log
+
+# Source text for the packed idle table - keep it out of the repo, or the
+# whole point of packing it is lost. Ship only the blob in dist/.
+quotes.txt
+
+# The packer explains what the idle blob contains, which defeats the point
+# of packing it. Kept local; the blob in dist/ is all the card needs.
+tools/

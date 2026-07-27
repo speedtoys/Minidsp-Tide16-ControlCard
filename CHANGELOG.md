@@ -1,5 +1,44 @@
 # Changelog
 
+## v1.1.6 - 2026-07-27
+
+**The power and reboot glyphs are panel buttons now** - a shallow dish
+milled into the plate, with a 1px rim.  The gradient is lit from BELOW,
+dark at the top wall climbing to light at the bottom; the same gradient
+flipped reads as a raised dome instead, which is why the standby button
+between them looks the opposite way round.  Their icons are 20% smaller
+and sit in the dish with room around them.
+
+**Fixed: the power button could never turn the unit on.**
+`media_player.tide16` advertises `supported_features: 2316` - no
+`TURN_ON` - but the script's default branch called it anyway, so the
+service raised and the press did nothing.  It is power OFF only now, and
+a press while the unit is already off is a clean no-op.  The Tide16
+cannot be woken over its own API at all: standby tears down its network
+stack, so port 5555 and the web UI both stop answering.
+
+**Fixed: the buttons were centred ~10px off.**  They were placed on the
+ink bounding box of the standby button, which centres on x1161.5 - but
+that is skewed by the specular highlight and soft shadow down the dome's
+right side.  Measured at the circle's top and bottom poles it centres on
+x1151.0, and that is where the three now line up.
+
+**The live selection is lime green with a white border**, on the source
+selector and the profile column alike, so the choice reads from the
+button and not only from the label's weight.  The profile options now
+match the source rows exactly - same size, same weight - rather than the
+heading above them.
+
+`Game` became `Night`: the firmware's own profile list is off / movie /
+music / night, and `game` is commented out in the device's web UI, so it
+was never selectable.
+
+**Every selectable control was audited** against the running device: 33
+of 33 resolve to a live service and entity, all 12 source names match the
+device's `source_list` exactly, the volume deltas sit inside the entity's
+own `-127.5..0` bounds, and each control is the topmost hit target at its
+own centre.  Everything the card calls belongs to the Tide16.
+
 ## v1.1.5 - 2026-07-26
 
 **The panel reads as a panel when the Tide16 is off.**  Every entity goes

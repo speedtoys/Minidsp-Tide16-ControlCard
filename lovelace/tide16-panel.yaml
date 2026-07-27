@@ -278,13 +278,17 @@
                 columns: 1
                 rows: 4
                 row_gap: 1.190cqw
-                dot: 1.004cqw
+                # 20 canvas px. Sizes are canvas px on the 1990-wide
+                # plate: 20 / 1990 = 1.005%.
+                dot: 1.005cqw
                 dot_gap: 0.402cqw
-                size: 1.070cqw
-                # 300 to match the "Profiles" heading exactly. The source
-                # rows use the element's default 400, which at this size
-                # reads noticeably larger than the headings beside it.
-                weight: "300"
+                # Matched to the SOURCE ROWS, not to the heading above:
+                # same 0.804cqw (16 canvas px) and same weight 400 the
+                # input labels use, so the two lists of selectable things
+                # read as one family. The heading stays bigger at
+                # 1.070cqw, which is the "Scenes:" size.
+                size: 0.804cqw
+                weight: "400"
                 color: "#B7B8B8"
                 # The DEVICE's own profile, read back over its websocket
                 # by scripts/tide16_dolby.py. Each item carries a `value`
@@ -293,6 +297,13 @@
                 active_entity: sensor.tide16_dolby_profile_live
                 active_attribute: null
                 active_color: "#FFFFFF"
+                # The live one's button: lime green with a 1px white
+                # border. Both MUST be quoted - an unquoted #32CD32 is a
+                # YAML comment and the value silently vanishes. .dot is
+                # box-sizing: border-box, so the border does not grow the
+                # circle.
+                active_background: "#32CD32"
+                active_border: "1px solid #FFFFFF"
                 # Weight, not size: every row has to stay level with its
                 # scene bar, and 1.070cqw IS the "Profiles" heading size,
                 # so the selection reads as bold rather than as a
@@ -654,7 +665,10 @@
                 # one px under its label the way it was drawn. The 21px
                 # rows still swallow it: 16px of type and a 15px dot on a
                 # 52px band.
-                dot: 0.754cqw
+                # 17 canvas px (was 15) - 17 / 1990 = 0.854%. Still
+                # well inside the 21px rows, so the two-row grid is
+                # unaffected.
+                dot: 0.854cqw
                 dot_gap: 0.302cqw
                 size: 0.804cqw
                 # matches the channel-name colour in the Output Channels
@@ -668,6 +682,13 @@
                 active_entity: media_player.tide16
                 active_attribute: source
                 active_color: "#FFFFFF"
+                # The live one's button: lime green with a 1px white
+                # border. Both MUST be quoted - an unquoted #32CD32 is a
+                # YAML comment and the value silently vanishes. .dot is
+                # box-sizing: border-box, so the border does not grow the
+                # circle.
+                active_background: "#32CD32"
+                active_border: "1px solid #FFFFFF"
                 active_size: 0.954cqw
                 background: "#333333"
                 # quoted: unquoted, YAML eats "#666666" as a comment and CSS
@@ -801,13 +822,43 @@
               # working hover. See tide16-bars.js.
               - type: custom:tide16-glyph
                 image: /local/tide16/power.png
-                hint: Power on/off
+                # Power OFF only. The Tide16 leaves the network entirely
+                # in standby, so nothing this card can reach is listening
+                # once it is off - waking it needs an IR remote, which is
+                # outside this project's scope. Pressing it while already
+                # off is a no-op, not an error.
+                hint: Power off the Tide16
                 tap:
-                  action: script.tide16_power_toggle
+                  action: script.tide16_power_off
+                # Concave panel button. The BOX is the dish, so it needs a
+                # height as well as a width or it comes out oval: 48x48
+                # canvas px (2.412% of 1990, 12.000% of 400), centred on
+                # x=1150.9 like the reboot glyph below it.
+                # Pulled 5px further off the standby button than the icon
+                # used to sit - box bottom y123 against the button's top
+                # edge at y137, so 14px of clearance rather than 9. A dish
+                # needs more air than a bare glyph or it crowds the real
+                # button beneath it.
+                # 48px dish, icon 33px (0.688 of it).
+                #
+                # Centred on x=1151.0, NOT on the ink bounding box of the
+                # standby button. That bbox centres on 1161.5, but it is
+                # wrong: the dome carries a bright specular highlight and
+                # a soft shadow down its RIGHT side, which a threshold
+                # reads as real geometry. Measure the circle's top and
+                # bottom POLES instead - y140, y150, y250 and y260 all
+                # come out symmetric about 1151.0. Anything centred on the
+                # bbox sits ~10px right of the button it belongs to.
+                #
+                # Bottom edge y129 against the button's top at y138, so
+                # 9px of clearance, mirrored by the reboot dish below.
+                button: true
+                icon_scale: 0.688
                 style:
-                  left: "56.716%"
-                  top: "20.000%"
-                  width: "2.246%"
+                  left: "56.633%"
+                  top: "20.250%"
+                  width: "2.412%"
+                  height: "12.000%"
                   transform: translate(0, 0)
               # Reboot glyph, the standby button's mirror image: same 9px
               # clear of the button but off its BOTTOM edge (the art's ring
@@ -829,10 +880,16 @@
                 tap:
                   action: button.press
                   data: {entity_id: button.tide16_reboot}
+                # Same dish as the power button, mirrored below the
+                # standby button: box top y278 against the ring fading out
+                # at y264, so the same 14px of clearance.
+                button: true
+                icon_scale: 0.688
                 style:
-                  left: "56.635%"
-                  top: "68.250%"
-                  width: "2.403%"
+                  left: "56.633%"
+                  top: "68.000%"
+                  width: "2.412%"
+                  height: "12.000%"
                   transform: translate(0, 0)
               # Volume/mute ring around the knob on the silver end panel.
               # The box IS the knob: centre (1681, 202.5) radius 113, so
@@ -916,7 +973,7 @@
               # A readout with a title and no rows is the card's
               # static-text element.
               - type: custom:tide16-readout
-                title: v1.1.5
+                title: v1.1.6
                 title_size: 0.980cqw
                 title_color: "#000"
                 title_gap: "0"

@@ -49,6 +49,186 @@ const BAR_GRADIENT =
   '#ACADAD 0%, #ABACAC 5%, #949494 20%, #838383 30%,' +
   '#5F6060 50%, #3E3E3D 70%, #252524 85%, #0E0E0E 100%)';
 
+// Packed string table for the idle panel. Repack with tools/pack_strings.py.
+const IDLE_KEY = [0x5b, 0x2e, 0x77, 0x13, 0xa9, 0x64, 0x3d, 0xc1, 0x8e, 0x42, 0x1f, 0xb6];
+const IDLE_TABLE =
+  'CUsadsQGWLOuNnCWLl0SM8oLTbHrMDLQKUsSM8YcRKbrLD/QNFxXZ8EBHaPrMWuWKEcQfcgIHbD7I3PfL1dZGeAQ30EXMT/R' +
+  'PkASYcgIUbiuI3jEPksTM90MXLWuNHbYIkJaYN0FULHrJj/yDWoEM8EFS6SuIHrCL0sFM8oLUa78YnvTK1ofPaMxTqSuLnbR' +
+  'M1oAdsADVbWuLHbCKUEQdsdEVK+uNmrUPl1XdcYWHa7+NnbbOkJXZ8EBSaCuI33FNFwHZ8ALU++EA3PBOlcEM9kLVK/6YmbZ' +
+  'LlxXYNkBXKrrMD/VOkwbdtpEU678NneWKEFXZ8EBHaTiJ3zCKUEZYIkCUa75YnvZLEAfesUIE8veLn7Pe1kfet0BHa/hK2zT' +
+  'e0EBdtsKVKbmNj/CNA4EdsgXUq+uLHrBe10HdsgPWLP9bBX9PksHM90MWOH4LXPDNktXeMcLX+HvNj/XNQ4SZcwKHa/7L33T' +
+  'KQ4DfIkUT6T4J3HCe14fctoBHajjIH7aOkAUdodub6T4J23FPg4De8xETa75J22WK0ICdIkBS6T8Oz/FMlZXfsYKSan9YmvZ' +
+  'e0sGZsgIVLvrYnraPk0DYcYKHbbrI22YUWgFdsweWOH3LWrEe3w0UokHXKPiJ2yWOUsRfNsBHajgMWvXN0IWZ8ALU+H6LT/C' +
+  'MkkfZ8wKHbXmJz/UOl0EPaMxTqSuNXDZP0sZM8oFX63rYm3fKEsFYIkXUuHoLnDZKQ4BessWXLXnLXHFe00WfccLSeHtLnbb' +
+  'OQ4efd0LHbXmJz/BMlwSYIduc6T4J22WOEEef4kBRaLrMWyWKF4ScsIBT+HtI33aPg4Uf8YHVrbnMXqYew4+Z4kQT6D+MT/b' +
+  'OkkZdt0NXuHqK2zCNFwDesYKE8veLn7VPg4WM9gRXLP6OD/VKVcEZ8gIHa7gYmvePg4WftkIVKfnJ22WL0FXYN0FX6jiK2XT' +
+  'e1ofdokXUrTgJmzCOkkSPaMwSLPgYmvePg4EatoQWKyuLXGWPlYWcN0IROH9J2nTNQ4aescRSaT9Yn3TPUEFdokIVLL6J3Hf' +
+  'NUlXYMZESanrYnzXK08Uet0LT7KuIX7Ye08bes4KE8vZK2/Te20zYIkCT67jYmvePg4UdscQWLOuLWrCLE8Fd4kQUuH+MHrA' +
+  'PkADM90MWOHjN2zfOA4RYcYJHaPrIXDbMkAQM8oLULH8J2zFPkpZGfwXWOH9J2/XKU8DdokTXK3iYnDDL0ISZ9pEW678YnPT' +
+  'PVpacMEFU6/rLj/XNUpXYcADVbWjIXfXNUASf4kBUaTtNm3fOEcDaodudqTrMj/hMgMxeokUXLL9NXDEP11Xct4FROHoMHDb' +
+  'e1ofdokXSaT8J3CWOUsUctwXWOHiLXHRPlxXY8gXTrbhMHvFe08Td4kAVKbnNn7ae0IWZ8wKXrigSE/ZN0cEe4kdUrT8YnDG' +
+  'L0cUcsVEXqDsLnqWKUsQZsUFT633YmzZe1ofdokGVLX9YnvZe0AYZ4kDWLWuMWvDOEVZGfkRSeHvYmzbOkIbM8sLSq2uLXmW' +
+  'KUcUdokGWKnnLHuWL0YSM8gJTa3nJHbTKQ4DfIkFX7LhMH2WPlYUdtoXHan7L3bSMloOM88WUqyuNnfTe1oFdssIWO+EA3PB' +
+  'OlcEM8AKTrXvLnOWKF4ScsIBT+HtI33aPl1XZMAQVeH6KnqWK1wefd0BWeHiJ2vCPlwefc5EW6DtK3HRe1ofdokXTaTvKXrE' +
+  'KAB9QcYQXLXrYmbZLlxXYNkBXKrrMGyWNEASM80BWrPrJz/TLUsFaokJUq/6Kj/CNA4HYcwSWK/6YmzCPlwSfIQNUKDpJz/U' +
+  'LlwZPsAKE8vbMXqWPEEbd4QUUaD6J3uWKE0Fdt4XHajgYmvePg4SYtwNTazrLGuWKU8UeIkCUrOuNX7ENksFM98LXqDiMTG8' +
+  'FUsBdttEUaj9NnrYe0oCYcAKWuHvYnnDN0JXfsYLU++uYlPDNU8FM84WXLfnNmaWK1sbf9pESanrYn3XKF1XfNwQHa7oYm/e' +
+  'Ol0SPaMoWKD4Jz/ZNUtXdsQUSbiuK3HGLlpXccwQSqTrLD/VNEAZdsoQWKWuIXDbK0EZdscQTuH6LT/EPkoCcMxETqjpLH7a' +
+  'e00FfN4AVK/pbBXmN08UdokQVaSuMWrULEEYdcwWHa7gYn6WK1wefsxJU7TjIHrEPkpXdcULUrOuNnbaPg4RfNtESajpKmvT' +
+  'KQ4VctoXE8vbMXqWOg4QYcwBU+HjI23dPlxXctsLSK/qYmvePg4Sd84BHa7oYmnfNVcbM9sBXq78JmyWL0FXYcwASKLrYn7Y' +
+  'OkIYdIkDUaD8JzG8CVsZM9kNU6quLHDfKEtXZ8EWUrTpKj/YPllXcMgGUaT9YnnZKQ5FI5lEVa77MGyWOUsRfNsBHa3nMWvT' +
+  'NUcZdIkHT6j6K3zXN0IOPaMvWKT+YmvePg4FdsQLSaSuIXDYL1wYf4kLSLX9K3vTe1ofdokIVLL6J3HfNUlXZ9sNXK/pLnqW' +
+  'OUsUctwXWOHnNmyWMkARYcgWWKWuMXrYKEEFM9sBW63rIWvFe1oFdssIWO+EDnDZKEsZM90MWOHvL2/aMkgedttEXq74J22W' +
+  'KE0Fdt4XHaP3YnDYPgMGZsgWSaT8YmvDKUBXZ8ZEUaT6YmvePg4EfNwKWeHsMHrXL0YSPaMxTqSuIH7CL0sFeswXHazvLGrQ' +
+  'Ok0DZtsBWeHhLD/Xe3oCdtoAXLiuK3GWIkECYYkWWKzhNnqWPUEFM9oJUq76KnrEe1gYf9wJWOHtKn7YPEsEPaMgVLLtLXHY' +
+  'Pk0DM9wKSLLrJj/+H2M+M8oFX63rMT/UPk0WZtoBHbXmJ2aWKEcHe8YKHbTgN2zTPw4FdtoLUbT6K3DYe0gFfMRESanrYmzP' +
+  'KFoSfodubrXhMHqWKF4ScsIBT+HtI33aPl1XesdES6TiNHrCe0wWdNpETq6uNnfTIg4TfIkKUrWuJHDEPEsDM90MWKj8Ym/Z' +
+  'N08Fet0dE8veN2uWL0YSM8UBW7WuMW/TOkUSYYkXUajpKmvaIg4Uf8YXWLOuNnCWL0YSM8wVSKD6LW2WL0FXcMYJTaTgMX7C' +
+  'Pg4RfNtEeKD8NndU27cEM9sLSaD6K3DYdSQ2ZcYNWeH4I3zDLkMefc5EU6TvMD/CM0tXYN0BT6ThbD+WCFoWZ8AHHaTiJ3zC' +
+  'KUcUet0dHaLvLD/TKU8EdokQVaSuLnDBPlxXfMoQXLfrMTG8Dl0SM8gWSaj9I3HXNw4RZtoBTuH6LT/fNl4FfN8BHaznIW3Z' +
+  'P1cZcsQNXrKuI3HSe0safN0NUq/vLj/CKU8ZYNkFT6TgIWaYUXwSccYLSeH6KnqWOkMHf8ACVKT8Yn7QL0sFM9kIXLjnLHiW' +
+  'OEECfd0WROHjN2zfOA4EfIkQVaSuNmjXNUlXd8YBTuHgLWuWOEEZZ8gJVK/vNnqWMU8NaYduabT8LD/ZPUhXX+wgHaXnMW/a' +
+  'OlcEM8sBXqD7MXqWOUICdokIVKbmNj/bOkUSYIkQVaSuMXDDNUpXcMYIWaT8bBX4PlgSYYkJVLmuL3rCKUcUM8gKWeHnL2/T' +
+  'KUcWf4kHXKPiJz/aPkAQZ8EXE+GuFnfTe1oefsAKWuHjK2zbOloUe4kWSKjgMT/fNk8QescDE8veLn7VPg4WM8EFT6XtLWnT' +
+  'KQ4TesoQVK7gI23Pe0EZM90MWOHKA1yWL0FXdMASWOH6KnqWNlsEespEX6T6NnrEe0oSdcAKVLXnLXGYUXsEdokAVLL6K3Pa' +
+  'PkpXdsUBXrX8K3zfL1dXZMEBU6T4J22WK0EEYMAGUaSgSFDGPkBXcokTVK/qLWiWLEYef8xETa3vO3bYPA4BescdUeH9LT/C' +
+  'M0tXcscFUa7pYmzfPEAWf4kMXLKuMHDZNg4DfIkBRbHvLHuYUW8bes4KHaDiLj/GNFkSYYQHUrPqYnPXOUsbYIkQUrbvMHuW' +
+  'L0YSM8wIWKL6MHbVOkJXY8gKWK2uJHDEe14FfNkBT+HtN23EPkADM8YWVKTgNn7CMkEZPaM2WKzhNHqWL0YSM9kWUrXrIWvf' +
+  'LUtXdcAIUOHoMHDbe0sBdtsdHaLhL2/ZNUsZZ4dEHYj6YnzZNl4FdtoXWLKuNnfTe10YZscATrXvJXqYUW0bctlESan8J3qW' +
+  'L0cadtpEX6ToLW3Te10SYcALSLKuLnbFL0sZescDHbXhYnzXN0cVYcgQWOH6KnqWKUEYfkvkpLKuI3zZLl0DespEUKTjLW3P' +
+  'dSQwfMUAELHiI2vTPw4yZ8EBT6/rNj/VOkwbdtpEXKXqYmjXKUMDe4kQUuH9Nm3TOkMSd4kJSLLnITG8HUEFM90MWOHtLnrX' +
+  'NUsEZ4kXUrTgJjOWOkIActAXHaXhNXHaNE8TM8QRTqjtYnvDKUcZdIkLW6ejMnrXMA4Sf8wHSbPnIX7ae0YYZtsXE8vCLWzF' +
+  'N0sEYIkFSKXnLT/FNFsZd9pEX6T6NnrEe08RZ8wWHaj6YnfXKA4VdswKHbTgOHbGK0sTM90TVKLrbBX0N08UeIkXTaTvKXrE' +
+  'e00WccUBTuH+MHDSLk0SM8hEU676K3zTOkwbaokAXLPlJ22WNUEeYMxEW63hLW2YUX0ef98BT+HtI33aPl1XYMELSK3qYnDY' +
+  'N1dXccxESLLrJj/XOUEBdolVDeHlCmWWOUsUctwXWOH9K3PAPlxXetpEU6D6N23XN0IOM8sWVKbmNnrEdSQ2M8EBXLfnJ22W' +
+  'KUsafN0BHaLhLGvENEJXdMASWLKuNnfTe1gYf9wJWOHjLW3Te08CZ8ELT6j6OzG8FUsBdttETa3vIXqWOkBXcsQUUajoK3rE' +
+  'e0wSf8YTHaCuAVuWK0IWaswWE+GuBW3XLUcDaokHXLT9J2yWL0YSM80NWqj6I3OWKEcQfcgIHbXhYnPTOkVXd8YTU7bvMHuY' +
+  'UXoCYccNU6auNnfTe1gYf9wJWOH7Mj/FN0EAf9BETbPrMXrELUsEM8QLT6SuJnrCOkcbM90MXK+uNmrENUcZdIkNSeH7Mj/H' +
+  'LkcUeMUdE8vPYm3ZLkATM9kLSqT8YmzCKUcHM8oWWKD6J2yWOg4Aes0BT+H9LWrYP10Dcs4BHbXmI3GWOg4FdsoQXK/pN3PX' +
+  'KQ4YfcxKN5L+J37dPlwEM9oLSK/qYnLZKUtXYcwIXLnrJj/BM0sZM90MWKj8YmzTKUcWf4kKSKzsJ23Fe08FdokHUq/9J3zD' +
+  'L0cBdoduaanrYn3TKFpXccgXTuH8J2zGNEAEdokHUqzrMT/QKUEaM9oRX7bhLXnTKV1XctoXWKzsLnrSe0oCYcAKWuHiLWiW' +
+  'L0cTdodufK35I2bFe14WZtoBHaPrNmjTPkBXcsUGSKz9YmzZe1ofdokFULHiK3nfPlxXcMgKHaLiJ37Ee0cDYIkJWKzhMGaY' +
+  'UXgefdAIHbPrIXDEP11XY9sBTrLrJj/fNQ4AescQWLOuKn7APg4WM8ULSqT8YnHZMl0SM88IUq78Yn3TOE8CYMxESanrYnjE' +
+  'NEEBdtpEXq7gNm3XOFpZGe8ofIKuJHbaPl1XYMYRU6WuIHrFLw4Ae8wKHbL6LW3TPw4Wf9kMXKPrNnbVOkIbaodufOG6CT/+' +
+  'H2M+M8oFX63rYnbbK1wYZcwXHaD7JnbZe0wScMgRTqSuNnfTe10YZscAHanvMT/bNFwSM9kNRaTiMT/CNA4AfNsPHbbnNneY' +
+  'UWUSdtlERK77MD/yGm1Xct1EWLjrYnPTLUsbM9oLHbXmJz/SMkkeZ8gIHbLnJXHXNw4TfMwXHa/hNj/UPk0YfsxES6T8NnbV' +
+  'OkIbaokHUqz+MHrFKEsTPaMwSKPrYn7bK0IedcABT7KuMXDDNUpXZMgWUKT8Yn3TOE8CYMxESanrYnjaOl0EM9sBSaDnLGyW' +
+  'M0sWZ4kCT67jYmvePg4aZtoNXu+EDHrAPlxXZtoBHaDgYnDSPw4ZZsQGWLOuLXmWOEEaY8YKWK/6MTGWe3ofdokRU7T9J3uW' +
+  'OEYWfccBUeHrLHrEPFdXe8gXHa/hNXfTKUtXZ8ZEWq6gSEzGPk8cdttETrXvLHvFe10ffNwIWeHsJz/QMkIbds1ESqj6Kj/Z' +
+  'KUkWfcAHHbLvLHuWPUEFM8QLT6SuLH7CLlwWf4kSUqLvLmyYUXsEdokGT6DnJnrSe14YZMwWHaLvIHPTKA4EfIkQVaSuJ3PT' +
+  'OFoFesoNSbiuIX7YNUEDM9wKT6D4J3OYUW9XddsBTqniOz/AOk0CZsQBWeHiK2zCPkAefc5ET67hLz/EPkMYZcwXHaX7MWuW' +
+  'PVwYfokQVaSuMXDDNUoEZ8gDWO+EFnfTe10OYN0BUOH5K3Pae0cacs4BHaPrNmvTKQ4edYkGUrXmYmzGPk8cdtsXHaD8Jz/Q' +
+  'Ok0efc5ESanrYmzXNktXfsgDU6T6K3yWK0EbdodufK35I2bFe1wSZMAKWeH9Nm3TOkMSd4kJSLLnIT/UPkgYYcxET6T+Ln7P' +
+  'MkAQM8AQE8vGK3jedlwSYMYISLXnLXGWOlsTesZETqnhN3PSe0wSM9kIXLjrJj/ZNQ4WM8ENWqmuMXfTN0hZGesFTrKuNm3X' +
+  'LUsbYIkJUrPrYmzaNFkbaokQVbPhN3jee00WYdkBSe2uNXffOEZXdMASWLKuK2uWOUsDZ8wWHbXnL3bYPAB9UokXSKP5LXDQ' +
+  'PlxXY8UFXqTqYnHTOlxXcokWWKf8K3jTKU8DfNtEX6TgJ3nfL11XddsLUOHvJnvfL0cYfcgIHa3hNTLQKUsGZswKXriuIXDZ' +
+  'N0cZdIduc6T4J22WLl0SM9sBWeHvLHuWLEYeZ8xEb4LPYnzZNUAScN0LT7KuLXGWL0YSM94WUq/pYnvXIg4YdYkQVaSuNXrT' +
+  'MAB9XNkQVKLvLj/VOkwbdtpEU6TrJj/ZOE0WYMALU6DiYnrOK0EEZtsBHbXhYmzDNUIedMEQHbXhYm3TOEYWYc4BHbXmJz/a' +
+  'MkkfZ4kNU7LnJnqWL0YSfodubrHrI3TTKQ4UfMcBTuH9KnDDN0pXccxEWqTgNnPPe1wYZ8gQWKWuJ2nTKVdXJoVUDfGuKnDD' +
+  'KV1XZ8ZEWK/9N23Te0sBdsdESqTvMDG8Gg4VcsUFU6LrJj/VOkwbdokXVa77LnuWLEsedMFEWLnvIWvaIg4De8xETqDjJz/X' +
+  'Lw4VfN0MHaTgJmyYUWoedMAQXK2uL2rFMk1XYMYRU6X9YnPTKF1XctsQVKfnIXbXNw4Ae8wKHaXhNXHaNE8Tds1ESan8LWrR' +
+  'Mw4WM94LUqXrLD/ENFsDdttKN4DiNX7PKA4CYMxEXOH9MnbEMlpXf8wSWK2uLXGWIkECYYkFULHiK3nfPlxXYMZESanrYmzC' +
+  'PlwSfIkHVaDgLHraKA4FdsQFVK+uIH7aOkAUds1KN43rI2nfNUlXcsdEWKz+NmaWKEYSf89EXKPhNHqWL0YSM8gJTa3nJHbT' +
+  'KQ4efcoWWKD9J2yWNlsEesoFUeHmJ37SKUEYfoduba75J22WOEEZd8AQVK7gJ23Fe1kYYcJEX6T9Nj/XPVoSYYkQVaSuJ3PT' +
+  'OFoFesoNSbiuKn7Fe1wSYN0BWeHhNHrENUcQe91KN4CuMWvTKUsYM9oLSK/qMT/bNFwSM8YUWK+uNXfTNQ4De8xEWLD7K2/b' +
+  'PkADM8oFX6jgJ2uWP0EYYdpEXLPrYnPTPVpXfNkBU++EEHrbNFgefc5EXq7jL37Fe0gFfMRETq7gJT/QMkISfcgJWLKuK3LG' +
+  'KUEBdtpEULT9K3zXNw4Rf8YTE8vbMXqWOg4EdtkFT6D6Jz/FLlwQdokUT676J3zCNFxXdcYWHaTvIXeWNlsEesoFUeHpJ3HE' +
+  'PgB9UokIUq/pJ22WNF4DesoFUeHtI33aPg4Qet8BTuH6KnqWN0cQe91EUK78Jz/CMkMSM90LHa78JX7YMlQSM90MWOHsK2vF' +
+  'dSQje8xEUaToNj/FK0sWeMwWHbLmLWraPw4VdokGT67lJ3GWMkBXZMAQVeHiJ3nCdkYWfc0BWeHpN3bCOlxXftwXVKKgSFHT' +
+  'LA4UctkFXqj6LW3Fe10ffNwIWeHsJz/fNVoFfM0RXqTqYnjEOkoCcsUIROH6LT/XLUEed4kXSaD8NnPfNUlXZ8EBHaTiJ3zC' +
+  'KUEZYIduc6T4J22WOFwYYNpETrHrI3TTKQ4UcssIWLKgYj/iM0tXf8wCSeHvLHuWKUcQe91EXqnvLHHTN11XfsgdHaPrIXDb' +
+  'Pg4UfMcCSLLrJjG8C0IWasAKWuHvLD/XN0wCfokGXKLlNX7EPw4YfcoBHaCuL3DYL0ZXYcwFUajpLGyWL0YSM8QFWq/rNnbV' +
+  'e0gedsUATu+EAHPDPloYfN0MHbLhN3HSKA4Vdt0QWLOuNXfTNQ4De8xETanhLHqWMl1XY8UFXqTqYmzVKUsSfYQXVKXrYnvZ' +
+  'LEBZGegNT+zpI2/GPkpXctwAVK6uKn7Fe0MYYcxETrHvIXqWOUsDZMwBU+H6KnqWMkAEZ9sRUKTgNmyYUW9XY8YIVLLmJ3uW' +
+  'OkMHf8ACVKT8YnzeOl0EetpET6ToLnrVL11Xd8AXSa78NnbZNQ4WZMgdHaf8LXKWL0YSM8UNTrXrLHrEdSQje8xEX6T9Nj/E' +
+  'Pk0YYc0NU6b9YmrFPg4aesoWUrHmLXHTKA4Aet0MHa72O3jTNQMRYcwBHaXnI2/eKU8QftpKN4rrJ2+WL0YSM8sFTrKuKXHZ' +
+  'OQ4VdsULSuH6KnqWL1wSccUBHargLX2WKEFXf8YTHaf8J27DPkAUeswXHbPrL37fNQ4Cfc0BT6/rI2vee1ofdokMVKbmMTG8' +
+  'GkIActAXHbLmN2uWP0EAfYkQVaSuMWbFL0saM8AKHbPrNHrEKEtXYMADU6Dib2/XL0ZXfNsAWLOuMXCWL0YSM8QRTqjtYnrO' +
+  'MloEM8oIWKDgLmaYUW8Cd8ALTannLnqbPFwWd8xER6j+YmvfPl1XY9sBS6TgNj/VOkwbdokAXLXvYnnENENXdtoHXLHnLHiY' +
+  'UW9XfcwQSq78KT/FLEcDcMFESqj6Kj/DNVsEds1ETa78NmyWPEcBdtpESanrYnLDKEcUM8QLT6SuMHDZNg4DfIkGT6TvNnfT' +
+  'dSQ6ZtoNXuH9Nm3TOkMSd4kCT67jYmvePg4Uf8YRWeH9LWrYP11XccwQSaT8Yn7Ce0YedMEBT+HrLnrAOloefMcXE8vPYmjf' +
+  'P0sFM8wVSKj+L3rYLw4FcsoPHbH8LXvDOEsEM8hESqjqJ22WKFoSYcwLHajjI3jTdSQxfNtEXKLtN23XL0tXZ8AJVK/pbj/X' +
+  'N0JXY8YTWLOuIXDEP11XYMELSK3qYn3Te0sPcsoQUbiuLXHTe0MCYMAHXK2uLHDCPg4bfMcDE8vKLT/YNFpXfsAcHbPnJXfC' +
+  'dkYWfc0BWeHvLHuWN0sRZ4QMXK/qJ3uWKF4ScsIBT+H5K23Te0cZM90MWOH9I3LTe10OYN0BUO+EFnfTe0kFdswKHazvMHTT' +
+  'KQ4WYcYRU6WuIz/1Hw4HYcwSWK/6MT/CM0tXf8gXWLOuJG3ZNg4RcsUIVK/pYnDQPQ4De8xEWKXpJzG8DUcZZ8gDWOHrLnrV' +
+  'L1wecMAQROHtLXHCOkcZYIkJUrPrYn7YOkIYdIkNU6fhMHLXL0cYfYkQVaDgYnLZP0sFfYkBUaTtNm3fOEcDaodufOHmJ37A' +
+  'MksFM90RT6/6I33aPg4act1EVK/tMHrXKEsEM90MWOHrL3DCMkEZcsVESqTnJXfCe0ERM90MWOH8J3zZKUoefc5KN4DiNX7P' +
+  'KA4bdt1ERK77MD/FK0sWeMwWTuHvIXzaMkMWZ8xESa6uNnfTe1wYfMREX6ToLW3Te1wSfsYSVK/pYmvePkNXddsLUOH6KnqW' +
+  'OUEPPaMpSLLnIT/GN08Ods1EW7PhLz/FNEIed4QXSaD6Jz/FL0EFcs4BHanvMT/QMlwadttEX6D9MT/CM08ZM8QRTqjtYm/a' +
+  'OlcSd4kCT67jYmvePg4Uf8YRWe+ECn7YPwMact0HVeHvLnOWKUsEetoQUrP9Yn3Pe0safN0NUq/vLj/fNl4Sd8gKXqSuIHrQ' +
+  'NFwSM8AKTrXvLnPfNUlXZ8EBUO+EAX7EOUEZPs8NUayuMHrFMl0DfNsXHbH8J2zTKVgSM90MWOHgI2vDKU8bM84WXKjgYmzC' +
+  'KVsUZ9wWWOHhJD/CM0tXfsAAT6DgJXqYUW8bZMgdTuHhMHbTNVpXd8AXXrPrNnqWL1wWfdoNTrXhMGyWL0EActsAHazvJXHT' +
+  'L0cUM8cLT7XmYmvZe10DcssNUaj0Jz/VOlwFeswWHaznJW3XL0cYfYdueqT8L37YMlsaM80NUqXrMT/FM0ECf81EX6SuI3jT' +
+  'Pw4efYkAXLPlLHrFKA4DfIkUT6T4J3HCe14ffN0LU+HtLXHCOkMefcgQVK7gbBXjKEtXfcYKEKjgJmrVL0cBdokXUq3qJ22W' +
+  'NEBXcsUIHbLnJXHXNwMHct0MHaLvMn7VMloYYdpESa6uI2nZMkpXYcwHSLP9K2nTe14fctoBHbL6LW3XPEtZGeoBT6DjK3yW' +
+  'OE8HcsoNSa78MT/FM0ECf81EX6SuK3HFL08bf8wAHabiI2XTdl0ed8xESLGuJHDEe0caY9sLS6TqYnfXKUMYfcAHHafiLWvX' +
+  'L0cYfYdubqTiJ3zCe1wSYMAXSa78MT/BMlofM9kWVKzrb3HDNkwSYcwAHbfvLmrTKA4DfIkUT6T4J3HCe10DcscAVK/pYmnZ' +
+  'N1oWdMxESqD4J2yYUXoFcscXVLL6LW3Fe0gFfMRESanrYmzXNktXYMAIVKLhLD/QOkMef9BETbPhJmrVPg4Vdt0QWLOuMXbU' +
+  'N0cZdIQHVaDgLHrae00Ye8wWWK/tJzG8EEsSY4kqbY+uI3HSe345Q4kAWLfnIXrFe14fatoNXqDiLmaWKEsHctsFSaTqYmvZ' +
+  'e14Fdt8BU7WuMnDaOlweZ9BEXrPhMWybL08beIdueaj9IW3TL0tXcMAWXrTnNmyWKEECfc1EUK78Jz/ZK0sZM8sBXqD7MXqW' +
+  'L0YSM8wIWKL6MHDYKA4fct8BHajgJnbAMkoCcsVESq78KWzGOk0SYIdufK35I2bFe0oSY8YIXLPnOHqWNUsAM8oFTaDtK2vZ' +
+  'KV1XZMAQVeH9J2nTKU8bM8ELSLP9YnDQe10ef8wKXqSuIHrQNFwSM8gUTa33K3HRe0MCYMAHE8vDJ2vXNwMResUJHbPrMXbF' +
+  'L0EFYIkNULH8LWnTe0oSZ8gNUeHsJ3zXLl0SM90MWOH9K3jYOkJXcMgKHbLrJz/fL11XfN4KHbPrJHPTOFoefMdKN5T9Jz/Z' +
+  'I1cQdsdJW7PrJz/FNEITdttETq6uNnfTe0QYescQTuHqLT/YNFpXfNENWaj0Jz/CM0tXYMYRU6X9Nn7RPgB9XsYRU7WuMnDB' +
+  'PlxXZ9sFU7LnMWvZKV1XZcwWSajtI3PaIg4EfIkBRaLrMWyWOFsFYcwKSeHtI3GWP1wWesdEWa75LGjXKUpZGecBS6T8YnLf' +
+  'Iw4Vf9wBHaDgJj/UKUEAfYkWWLLnMWvZKV1XesdESanrYmzXNktXdMgNU+H9Nn7RPgBXM/0MWKj8YmvePlwacsVETaT8MXDY' +
+  'OkIeZ8ABTuHvMHqWMkAUfMQUXLXnIHPTdSQ/cscAELbhN3HSe0cZd9wHSa78MT/EPloWesdEUK78Jz/bLl0ecMgIHazrL3DE' +
+  'Ig4De8gKHazvIXffNUtaZMYRU6WuK3HSLk0DfNsXE8vHLGzCOkIbM8sdTaD9MT/VOl4WcMAQUrP9YnbYe0oSYMoBU6XnLHiW' +
+  'K0YOYMAHXK2uMXbMPg4DfIkJXKjgNn7fNQ4fctsJUq/nIT/eMksFctsHVbigSF6WL1wWfdoNTrXhMP02wl1XccwQXOH9KnDD' +
+  'N0pXfsgQXqmuNnfTe1wYfMSGvVj9Ym3TLUsFccwWXLXnLXGWL0cadokTVLXmK3GWPUcBdokUWLPtJ3HCdSQiYMxEXrP3LXjT' +
+  'NUcUcsUIROH8J2zCPkpXd8ALWaT9YnnZKQ4EfsYLSanrMD/EPlgSYdoBHbPrIXDAPlwOPaMgVLLtMHrCPg4YY4QFULH9YmzZ' +
+  'LkATM8sBSbXrMD/UPk0WZtoBHajgNnrRKU8Dds1EXqj8IWrfL11XcMYJTbPrMWyWL0YSM8wIWKL6MHDYKA4DfMZEXq3hMXra' +
+  'Ig4DfM4BSanrMDG8GkIbM9oNWq/vLjLGOlofM9sBTqj9NnDEKA4Ee8YRUaWuJH7VPg4De8xETqDjJz/SMlwScN0NUq+uNnCW' +
+  'K1wSZcwKSeHrLnrVL1wYfYkQSLPsN3PTNU0SPaMxTqSuMXbaLUsFPssBXLPnLHiWKEEbd8wWHa7gLmaWOkwYZcxESanrYnzE' +
+  'NF0EfN8BT+HoMHrHLksZcNBKN5PrMnPXOEtXdcgHSa78Oz/cLkMHdtsXHbbnNneWNkEZfMoWRLL6I3PaMkASM8oLTbHrMD/C' +
+  'NA4Fds0RXqSuL3DaPk0Cf8gWHanrMXbCOloefMdKN4LvMn7VMloYYdpEUKDgN3nXOFoCYcwAHaX7MHbYPA4bfN5EXLXjLWzG' +
+  'M0sFespETbPrMWzDKUtXe8gSWOHpMHrXL0sFM80dU6DjK3yWM0sWd9sLUqygSFPTOlgSM8gQHa3rI2zCe1ofYcwBHaznLnPf' +
+  'NksDdtsXHaPrNmjTPkBXYcwXVLL6LW3Fe10YM90MWKj8YnHZMl0SM88NWK3qMT/SNA4ZfN1EUrfrMHPXKwB9Q8YTWLOjMWrG' +
+  'K0IOM80NUqXrMT/FM0ECf81EX6SuI23EOkAQds1ETrjjL3rCKUcUcsUIROH6LT/UOkIWfcoBHbPrIWvfPUcUct0NUq+uKX7E' +
+  'Nk9ZGegISqD3MT/bOloUe4kQT6DgMXbFL0EFM8oFTqSuNnrbK0sFct0RT6T9Yn3TPUEFdokJXLXtKnbYPA4QcsAKE8vZK23T' +
+  'LEECfc1ET6T9K2zCNFwEM8gAWeH6J2fCLlwSM8sBXqD7MXqWL0YSM9oNWq/vLj/CKU8BdsUXHaCuLnDYPEsFM9oHWK/nIT/E' +
+  'NFsDdoduaLLrYmjZNEoSfYkXSaDgJnDQPV1XZscAWLOuJnbFOFwSZ8xET6TpN3PXL0EFYIkQUuHnMXDaOloSM98LUbXvJXqW' +
+  'PVwYfokHVaD9MXbFe10DYcwXTu+ED1DlHWsjYIkWWLD7K23Te14SYcALWajtYnjXL0tXYcwIXLnvNnbZNQ4DfIkJXKjgNn7f' +
+  'NQ4HYcYUWLOuNnDYOkJXdsUFTrXnIXbCIgB9UcAUUq3vMD/CKU8ZYMAXSa78MT/GKUEBes0BHafnMHLTKQ4VctoXHaPrIX7D' +
+  'KEtXZ8EBROHtLXHSLk0DM94NSamuIHDCMw4HfMUFT6j6K3rFdSQ2ZcYNWeH9N23QOk0SPsQLSK/6YnzZNl4YfcwKSbKuNXfT' +
+  'NUsBdttETa79MXbUN0tZM4kpSLLnIT/YPksTYIkSWLP6K3zXNw4EY8gHWO+EC3HFL08bf4kHXLHvIXbCNFwEM94NSamuNnfT' +
+  'e14FescQVK/pYnnXOEcZdIkLSLX5I23Se10YM9oQUrPrJj/TNUsFdNBEXqDgYnrFOE8HdokHUaTvLHPPdSQiYMxEUa75b3LX' +
+  'KF1XYcwXVLL6LW2WN0sWd9pESa6uMHrSLk0SM84WXLfnNn7CMkEZcsVEUa7vJnbYPA4YfYkJVKL8LXvTL08ef4duabPvLGzf' +
+  'KFoYYYkUXKj8MT/FM0ECf81EX6SuK3HCKUETZsoBWeH6LT/TOk0fM8YQVaT8Yn3TPUEFdokXUq3qJ23fNUlXZ8ZEVKz+MHDA' +
+  'Pg4Ue8gKU6TiYnzZNF4SYcgQVK7gbBX3e0gCf8UdHaXnMXzEPloSM9oNWq/vLj/GOlofM9kWWLfrLGvFe0cZZ8wDT6D6J3uW' +
+  'M08FfsYKVKKuIXDYPEsEZ8ALU++ECXrTKw4RdswAX6DtKT/EPl0eYN0LT7KuMnfPKEcUcsUIROHsJ3ffNUpXZ8EBHaDjMnPf' +
+  'PUcSYYkXSaDpJz/FNA4De8xETqjpLH7ae0UZfN4XHbbmJ23Te1oYM9sBSbT8LDG8Dl0SM8cLU6zvJXHTL0cUM90MWLPjI3OW' +
+  'K08EZ8xESa6uMm3TLUsZZ4kMWKD6YnnENENXccwHUqznLHiWMkATZsoQVLfrbBXzN0sUZ9sLUbj6K3yWOE8HcsoNSa78MT/F' +
+  'M0ECf81EX6SuMHDCOloSd4kFU6/7I3PaIg4DfIkWWKXnMWvEMkwCZ8xETrXhMHrSe14Yf8gWVLX3bBXyMl0UYcwQWOH4LXPC' +
+  'OkkSM9sBWrTiI2vZKV1XY9sLWbTtJz/bNFwSM8gWSajtN3PXL0tXcNwWT6TgNj/CM08ZM8QLU67iK2veMk1XYcwDSK3vNnDE' +
+  'KAB9XcwSWLOuNm3fNg4DYcgKTqj9NnDEe0IScs0XHbXhYnbSPkADesoFUeHiJ3HRL0YEPYlEbq3nJXfCe08EasQJWLX8Oz/f' +
+  'Nl4FfN8BTuH9Mn7CMk8bM9sBXK3nMXKYUXwSYMAXSa78MT/FM0ECf81EX6SuIGrENUsTM8AKHbbnNneWK0cZeIkKUqj9Jz/F' +
+  'NA4De8wdHa3rI23Ye1ofdokCSK3iYnnEPl8CdscHROH9MnrVL1wCfoduaLLrYn7fKQMUfNsBHaf7MXrFe1oYM8wIVKznLH7C' +
+  'Pg4TeswIWKL6MHbVe10adsgWVK/pbBX3e0IWYc4BT+H6MH7YKEcEZ8YWHbHvIXTXPEtXdMASWLKuLnDBe0gFdtgRWK/tK3rF' +
+  'e0MYYcxET67hLz/CNA4Tdt8BUa7+bBX/NV0DcsUIHbLjI3PadlgWf9wBHaLvMn7VMloYYdpESLH9Nm3TOkNXYMZESanrYnnX' +
+  'KFpXddsBTLTrLHzfPl1XctsWVLfrYnnfKV0DPaMnVa7hMXqWP0cYd8wXHbbnNneWKEERZ4kWWKLhNHrEIg4DfIkFS67nJj/F' +
+  'L08FZ8UNU6auNnfTe14YZMwWHbL7Mm/aIgB9XsgQXqnrJj/CKU8ZYMAXSa78Ym7DOkoEM9kWUrfnJnqWKFsHdtsNUrOuJXrZ' +
+  'NksDYcAHHajjI3jfNUlXcMYJTaD8J3uWLEcDe4kLT6XnLH7EIg4HcsAWTu+EF2zTe0oeYcwHSajhLH7ae10Yf80BT+HsJ3zX' +
+  'Ll0SM8oLU7frLGvfNEAWf4kXUq3qJ22WOkIbfN4XHaL7MG3TNVpXZ8ZESqDgJnrEdSQzetoHT6T6Jz/VMlwUZsAQT7iuIHrY' +
+  'PkgeZ9pEW7PhLz/ZOE0WYMALU6DiYnrOK0EEZtsBHbXhYnLZNEAbes4MSeH6LT/EPl0SZ4kOSK/tNnbZNQ4VesgXEw==';
+
+/* Decoded lazily and cached - the panel spends most of its life with the
+   unit ON, where this is never touched. Uint8Array + TextDecoder rather
+   than charCode arithmetic so anything non-ASCII in the table (curly
+   quotes, em dashes) survives the round trip. */
+let _idleCache = null;
+function idleStrings() {
+  if (_idleCache) return _idleCache;
+  try {
+    const raw = Uint8Array.from(atob(IDLE_TABLE), (ch) => ch.charCodeAt(0));
+    const out = raw.map((v, i) => v ^ IDLE_KEY[i % IDLE_KEY.length]);
+    _idleCache = new TextDecoder().decode(out).split('\n').filter(Boolean);
+  } catch (err) {
+    _idleCache = [];
+  }
+  return _idleCache;
+}
+
 const DEFAULTS = {
   entity: 'sensor.tide16_channel_levels',
   attribute: 'channels',
@@ -78,6 +258,16 @@ const DEFAULTS = {
   numbers_gap: '0.236cqw', // between the bar baseline and the digits
   numbers_color: '#FFFFFF',
   numbers_weight: '500',
+
+  // Idle panel. With the unit off there are no levels to draw and the
+  // meter window is dead space, so it gets used. Off by setting
+  // idle: false.
+  idle: true,
+  idle_delay_ms: 8000, // continuous silence before it starts
+  idle_gap_ms: 5000, // dark pause between one string ending and the next starting
+  idle_speed: 95.9, // px per second in the element's OWN space (see _idleNext)
+  idle_size: '1.66cqw',
+  idle_color: '#FFFFFF',
 };
 
 class Tide16Bars extends HTMLElement {
@@ -127,6 +317,9 @@ class Tide16Bars extends HTMLElement {
     }
     document.removeEventListener('visibilitychange', this._onVisibility);
     this._stopKeepalive();
+    // A running animation on a detached element keeps a live timer and a
+    // compositor layer for a view nobody is looking at.
+    this._stopIdle();
   }
 
   /* -- fast-metering keepalive ------------------------------------- */
@@ -135,6 +328,9 @@ class Tide16Bars extends HTMLElement {
     const wanted = this._onScreen && document.visibilityState === 'visible';
     if (wanted) this._startKeepalive();
     else this._stopKeepalive();
+    // Same gate as the metering: off screen or tab hidden, nothing runs.
+    // Without this the scroller animates forever behind another view.
+    if (!wanted) this._stopIdle();
   }
 
   _startKeepalive() {
@@ -187,6 +383,8 @@ class Tide16Bars extends HTMLElement {
       this._bars.push(bar);
     }
 
+    if (this._cfg.idle) this._buildIdle();
+
     if (!this._cfg.numbers) return;
     // Positioned at top:100% so it hangs BELOW the box rather than eating
     // bar travel - the box stays exactly the meter window, as the YAML
@@ -220,6 +418,164 @@ class Tide16Bars extends HTMLElement {
     this.appendChild(row);
   }
 
+  /* -- idle panel ---------------------------------------------------- */
+
+  _buildIdle() {
+    const c = this._cfg;
+    const wrap = document.createElement('div');
+    // The meter window is the clip: text enters and leaves at its edges
+    // rather than running out across the plate's artwork.
+    Object.assign(wrap.style, {
+      position: 'absolute',
+      inset: '0',
+      overflow: 'hidden',
+      pointerEvents: 'none',
+      opacity: '0',
+    });
+    const line = document.createElement('div');
+    Object.assign(line.style, {
+      position: 'absolute',
+      top: '50%',
+      left: '0',
+      whiteSpace: 'nowrap',
+      lineHeight: '1',
+      fontSize: c.idle_size,
+      fontWeight: '300',
+      color: c.idle_color,
+      willChange: 'transform',
+    });
+    wrap.appendChild(line);
+    this.appendChild(wrap);
+    this._idleWrap = wrap;
+    this._idleLine = line;
+    this._idleOrder = null;
+    this._idleIx = 0;
+    this._idleLast = null;
+    this._idleRow = -1;
+    this._idleAnim = null;
+    this._idleTimer = null;
+  }
+
+  /* Called on every hass update. `quiet` means the device is gone, not
+     merely silent - a muted but live unit still reports levels. */
+  _syncIdle(quiet) {
+    if (!this._idleWrap) return;
+    const running = this._idleTimer !== null || this._idleAnim !== null;
+    if (quiet && this._onScreen && document.visibilityState === 'visible') {
+      if (!running) {
+        // Wait out the gap before starting: the unit drops its entities
+        // for a moment on a reconnect too, and text flashing up during a
+        // blip would look like a fault rather than an idle panel.
+        this._idleTimer = setTimeout(() => {
+          this._idleTimer = null;
+          this._idleNext();
+        }, this._cfg.idle_delay_ms);
+      }
+    } else if (running || this._idleWrap.style.opacity !== '0') {
+      this._stopIdle();
+    }
+  }
+
+  _stopIdle() {
+    if (this._idleTimer !== null) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
+    if (this._idleAnim) {
+      this._idleAnim.cancel();
+      this._idleAnim = null;
+    }
+    if (this._idleWrap) this._idleWrap.style.opacity = '0';
+  }
+
+  /* Shuffled playlist rather than a fresh random pick each time: picking
+     at random independently would repeat strings while others had not
+     been seen at all. This plays every one before any repeats, then
+     reshuffles - and swaps the seam if the new order would replay the
+     string that just finished. */
+  _idleShuffle() {
+    const n = idleStrings().length;
+    const order = Array.from({ length: n }, (_, i) => i);
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    if (n > 1 && this._idleLast !== null && order[0] === this._idleLast) {
+      [order[0], order[n - 1]] = [order[n - 1], order[0]];
+    }
+    this._idleOrder = order;
+    this._idleIx = 0;
+  }
+
+  _idleNext() {
+    const list = idleStrings();
+    if (!list.length || !this._idleWrap) return;
+    const c = this._cfg;
+    if (!this._idleOrder || this._idleIx >= this._idleOrder.length) this._idleShuffle();
+    const pick = this._idleOrder[this._idleIx];
+    this._idleIx += 1;
+    this._idleLast = pick;
+    this._idleLine.textContent = list[pick];
+    // Kill the previous run before measuring: it holds its end frame
+    // (fill: forwards) and would otherwise fight the new one.
+    if (this._idleAnim) {
+      this._idleAnim.cancel();
+      this._idleAnim = null;
+    }
+
+    // offsetWidth, NOT getBoundingClientRect. card-mod scales this whole
+    // card (transform: scale(0.75)), so a client rect is in VISUAL pixels
+    // while a CSS translate is applied in the element's OWN unscaled
+    // space. Mixing them made every string stop ~25% short and sit
+    // parked in the window. offsetWidth is layout px - the same space the
+    // transform lives in - so the two agree at any scale.
+    const box = this.offsetWidth;
+    const text = this._idleLine.offsetWidth;
+    const travel = box + text;
+    if (!(travel > 0)) return;
+
+    // Put each one on a different row of the meter window rather than
+    // always across the middle. How many rows fit is measured, not
+    // assumed - the type is sized in cqw, so it changes with the card.
+    const rows = Math.max(1, Math.floor(this.offsetHeight / (this._idleLine.offsetHeight || 1)));
+    let row = 0;
+    if (rows > 1) {
+      // any row except the one the previous string used
+      row = Math.floor(Math.random() * (rows - 1));
+      if (row >= this._idleRow) row += 1;
+    }
+    this._idleRow = row;
+    this._idleLine.style.top = `${((row + 0.5) / rows) * 100}%`;
+
+    // Park it off the right edge BEFORE revealing, or the first frame
+    // shows it sitting at the window's left edge at full size.
+    this._idleLine.style.transform = `translate(${box}px, -50%)`;
+    this._idleWrap.style.opacity = '1';
+
+    // Web Animations rather than a CSS keyframe: this element renders
+    // into the light DOM, so a <style> tag here would leak its rules to
+    // the whole document.
+    // fill: forwards holds the last frame, which is off the LEFT edge -
+    // that is what keeps the string out of sight through the gap without
+    // fading the window down and back up. One simply follows the next.
+    this._idleAnim = this._idleLine.animate(
+      [
+        { transform: `translate(${box}px, -50%)` },
+        // -100% is the line's OWN width: it clears the left edge exactly,
+        // even if the measurement above is a pixel out.
+        { transform: 'translate(-100%, -50%)' },
+      ],
+      { duration: (travel / c.idle_speed) * 1000, easing: 'linear', fill: 'forwards' }
+    );
+    this._idleAnim.onfinish = () => {
+      if (!this._idleWrap) return;
+      this._idleTimer = setTimeout(() => {
+        this._idleTimer = null;
+        this._idleNext();
+      }, c.idle_gap_ms);
+    };
+  }
+
   _levels() {
     if (!this._hass) return null;
     const st = this._hass.states[this._cfg.entity];
@@ -244,6 +600,10 @@ class Tide16Bars extends HTMLElement {
   _render() {
     if (!this._bars.length) return;
     const levels = this._levels();
+    // No levels at all means the entity is gone with the unit - the meter
+    // window is then dead space. Checked before the early return below,
+    // so an odd scale can't strand the idle panel on screen.
+    this._syncIdle(levels === null);
     const { floor, ceiling } = this._scale();
     const span = ceiling - floor;
     if (!(span > 0)) return;
@@ -723,6 +1083,12 @@ if (!customElements.get('tide16-buttons')) {
  * everything else on this plate: the PNG fills the width and keeps its
  * own aspect. Untapped it stays inert and takes no pointer events, so it
  * can't swallow a click meant for the plate underneath.
+ *
+ * `button: true` sinks the glyph into a concave panel button - a round
+ * dish with a 1px rim, lit from below so it reads as milled INTO the
+ * plate rather than sitting on it. With it, the box is the BUTTON and
+ * `icon_scale` (0.8 default) is the glyph inside, so give the box a
+ * `height` as well as a `width` or the dish will not be round.
  */
 
 class Tide16Glyph extends HTMLElement {
@@ -748,6 +1114,14 @@ class Tide16Glyph extends HTMLElement {
     const c = this._cfg;
     const root = this.shadowRoot || this.attachShadow({ mode: 'open' });
     const tappable = !!(c.tap && c.tap.action);
+    // `button: true` wraps the glyph in a concave panel button. The BOX is
+    // the button, and the icon is `icon_scale` of it - width and height
+    // both, with object-fit: contain, so the scale is exact whatever the
+    // art's aspect. Sizing by width alone would shrink a tall glyph less
+    // than a square one and the pair would stop matching.
+    const s = c.icon_scale == null ? 0.8 : Number(c.icon_scale);
+    const pct = (s * 100).toFixed(2);
+    const btn = !!c.button;
     root.innerHTML = `
       <style>
         :host {
@@ -756,10 +1130,64 @@ class Tide16Glyph extends HTMLElement {
           pointer-events: ${tappable ? 'auto' : 'none'};
           cursor: ${tappable ? 'pointer' : 'default'};
         }
+        ${
+          btn
+            ? `
+        /* A shallow dish milled into the panel. The gradient is lit from
+           BELOW - bright at the bottom, dark at the top - which is what
+           reads as concave; the same gradient flipped reads as a dome.
+           The inset shadow up top is the rim casting into the well, the
+           inset highlight at the bottom is the light it bounces back, and
+           the 1px outer bottom line is the panel's own cut edge catching
+           light, which is what makes it sit flush rather than float. */
+        .btn {
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          display: grid;
+          place-items: center;
+          /* The dish sits well ABOVE the plate's own near-black (#0e0e0e)
+             so the component reads as hardware rather than as a hole.
+             Bottom-lit: #14161a at the top wall climbing to #4e5157 at
+             the bottom, a ~58-luma sweep across the face. */
+          background: radial-gradient(120% 120% at 50% 128%,
+                                      #4e5157 0%, #303338 38%, #1d1f23 72%, #14161a 100%);
+          border: 1px solid ${c.button_border || '#7d828b'};
+          box-shadow:
+            /* rim casting into the well - the main concavity cue */
+            inset 0 5px 7px -2px rgba(0, 0, 0, 0.95),
+            /* light bouncing off the lower inner wall */
+            inset 0 -4px 6px -2px rgba(255, 255, 255, 0.30),
+            /* crisp inner darkening so the wall meets the rim, not fades */
+            inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+            /* panel surface catching light on the upper lip of the hole,
+               and dropping into shadow below it - an inset reads the
+               OPPOSITE way round to a raised button here */
+            0 -1px 0 rgba(255, 255, 255, 0.13),
+            0 2px 3px rgba(0, 0, 0, 0.75);
+        }
+        img {
+          display: block;
+          width: ${pct}%;
+          height: ${pct}%;
+          object-fit: contain;
+        }
+        :host(:hover) .btn { border-color: ${c.button_border_hover || '#a3a8b1'}; }
+        /* pressed: deepen the dish and sink the icon a hair */
+        :host(:active) .btn {
+          background: radial-gradient(120% 120% at 50% 128%,
+                                      #3a3d42 0%, #232629 38%, #15171a 72%, #0e1013 100%);
+          box-shadow:
+            inset 0 6px 9px -2px rgba(0, 0, 0, 1),
+            inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+        }
+        :host(:active) img { filter: brightness(0.75); transform: translateY(0.5px); }`
+            : `
         img { display: block; width: 100%; height: auto; }
-        :host(:active) img { filter: brightness(0.7); }
+        :host(:active) img { filter: brightness(0.7); }`
+        }
       </style>
-      <img>`;
+      ${btn ? '<div class="btn"><img></div>' : '<img>'}`;
     const img = root.querySelector('img');
     img.src = c.image;
     // alt, not the tooltip: the hover text belongs on the host, which is
@@ -1196,6 +1624,13 @@ const INPUT_DEFAULTS = {
   active_weight: null,
   background: '#333333',
   border: '1px solid #666666',
+  // The live one's button, so the selection reads at a glance from the
+  // dot alone rather than only from the label's weight. null on either
+  // leaves the inactive styling in place.
+  // box-sizing on .dot is border-box, so a heavier active border cannot
+  // grow the circle out of register with the rest of the column.
+  active_background: null,
+  active_border: null,
   items: [],
 };
 
@@ -1293,6 +1728,10 @@ class Tide16Inputs extends HTMLElement {
         .cell[data-tap]:active .dot { filter: brightness(1.9); }
         .cell[data-tap]:active .lbl { opacity: 0.6; }
         /* the input the device is actually on */
+        .cell.on .dot {
+          ${c.active_background ? `background: ${c.active_background};` : ''}
+          ${c.active_border ? `border: ${c.active_border};` : ''}
+        }
         .cell.on .lbl {
           color: ${c.active_color};
           ${c.active_size ? `font-size: ${c.active_size};` : ''}
@@ -1354,7 +1793,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.5';
+const TIDE16_VERSION = '1.1.6';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

@@ -59,12 +59,22 @@ script:
             {% set v = states('number.tide16_volume') | float(0) + (delta | float(0)) %}
             {{ [[v, -127.5] | max, 0.0] | min }}
 
-  # media_player.tide16 advertises TURN_OFF but not TURN_ON (supported
-  # features 2316 = SELECT_SOURCE + TURN_OFF + VOLUME_MUTE + VOLUME_SET),
-  # so this branches rather than using media_player.toggle - toggle would
-  # call an unsupported turn_on and raise.
-  tide16_power_toggle:
-    alias: Tide16 Power Toggle
+  # media_player.tide16 advertises TURN_OFF but NOT TURN_ON (supported
+  # features 2316 = SELECT_SOURCE + TURN_OFF + VOLUME_MUTE + VOLUME_SET).
+  #
+  # This is power OFF only, deliberately. The Tide16 CANNOT be powered on
+  # over its own API: standby tears down the whole network stack - port
+  # 5555 and the web UI on 5050 both stop answering and the unit leaves
+  # the network - so by the time it is off there is nothing left to send
+  # a command to. Only an IR remote can wake it, and what IR hardware
+  # someone owns is their business, not this card's.
+  #
+  # The previous version called media_player.turn_on in a default branch.
+  # The entity does not support TURN_ON, so that raised and the button
+  # silently did nothing. Guarding on the state means a press while the
+  # unit is already off is a clean no-op instead of an error.
+  tide16_power_off:
+    alias: Tide16 Power Off
     mode: single
     sequence:
       - choose:
@@ -76,10 +86,6 @@ script:
               - action: media_player.turn_off
                 target:
                   entity_id: media_player.tide16
-        default:
-          - action: media_player.turn_on
-            target:
-              entity_id: media_player.tide16
 
 template:
   # The output-channel assignment LATCHES. It comes from
