@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.1.8 - 2026-07-27
+
+**Fixed: the idle panel often never started.**  `_syncKeepalive` runs
+when the IntersectionObserver first reports the element, and it only ever
+*stopped* the idle panel - starting it was left to `_render`, which runs
+on a hass update.  The observer usually fires after the first of those,
+and with the unit off the Tide16 entities are static, so whether the
+panel ever began came down to unrelated state changes elsewhere in Home
+Assistant.  Measured before the fix: 4 of 6 fresh page loads showed
+nothing at all.  After: 6 of 6, each opening on a different string.
+
+The selection itself was never at fault, and was measured rather than
+assumed: 557 consecutive plays gave 150 distinct strings with the first
+repeat at index 150 - every one shown before any repeats - and no
+adjacent repeats.  Across 3000 shuffles the opening pick is uniform
+(chi-square 140.8, df 149, inside the 3-sigma band 97..201) and every
+string appears.
+
 ## v1.1.7 - 2026-07-27
 
 **"Unknown" can no longer appear on the panel.**  A cold start has two

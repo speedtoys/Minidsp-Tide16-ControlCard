@@ -330,7 +330,15 @@ class Tide16Bars extends HTMLElement {
     else this._stopKeepalive();
     // Same gate as the metering: off screen or tab hidden, nothing runs.
     // Without this the scroller animates forever behind another view.
-    if (!wanted) this._stopIdle();
+    //
+    // It has to START here too, not only stop. This runs when the
+    // IntersectionObserver first reports the element, which is usually
+    // AFTER the first hass update - and _render is the only other place
+    // that evaluates the idle panel. With the unit off the Tide16
+    // entities are static, so waiting for the next hass update meant the
+    // panel often never began at all: 4 of 6 fresh loads played nothing.
+    if (wanted) this._syncIdle(this._levels() === null);
+    else this._stopIdle();
   }
 
   _startKeepalive() {
@@ -1804,7 +1812,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.7';
+const TIDE16_VERSION = '1.1.8';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
