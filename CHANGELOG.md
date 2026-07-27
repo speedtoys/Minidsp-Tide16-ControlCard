@@ -1,5 +1,92 @@
 # Changelog
 
+## v1.1.5 - 2026-07-26
+
+**The panel reads as a panel when the Tide16 is off.**  Every entity goes
+`unavailable` with the unit down, and a picture-elements `state-label`
+prints that state localized - so the plate filled with the word
+"Unavailable", the volume one overflowing the screen window because it is
+right-aligned to the baked `dB` mark.  Every field now falls back to a
+single `-`, and the volume to `-.-`.
+
+The screen fields drop their `availability` templates and return the
+placeholder instead.  `sensor.tide16_source`, `_speaker_config` and
+`_preset` belong to the upstream integration and cannot carry one, so
+they are mirrored as `*_display` sensors.  `tide16-readout` and
+`tide16-channels` take a `placeholder` option, defaulting to `-`, which
+is what turns a dangling `Decoder:` into `Decoder: -` and stops the
+output legend from vanishing heading and all.
+
+The volume placeholder needed its own element.  The integer/decimal split
+relies on both halves being DIGITS: a hyphen's ink is centred on the em
+box rather than sitting on the baseline, so feeding `-` through the two
+differently-sized labels drew three stray marks.  The digits are now
+wrapped in a `conditional`, with a second branch drawing `-.-` as one
+string at one size.
+
+**A Dolby profile column** - Movie / Music / Game / Off - in the void
+between the scene bars and the standby button.  The heading's "Dolby" is
+the double-D mark: `tide16-readout` takes a `title_image`, baseline
+aligned and sized in em off the cap height, so the mark measures exactly
+as tall as the capital beside it.
+
+The options are `tide16-inputs` as one column of four, so the dot, the
+label and the white/underlined/larger active state are the ones already
+on the plate.  They register to the scene column rather than being
+measured independently - same box, same gap - which puts each row on its
+colour bar by arithmetic instead of by eye.
+
+Options are **Movie / Music / Night / Off**, mirroring the firmware's own
+list.  `game` appears in the device's web UI source but is commented out
+there, so it cannot be selected on this hardware.
+
+`tide16-inputs` also gained a `weight` option.  Matching the heading's
+font-size was not enough to make the options read the same size as it:
+the labels defaulted to 400 against every plate heading's 300, so at an
+identical `1.070cqw` they still looked bigger.  The source rows keep 400;
+the Dolby column sets 300.
+
+**The profile column drives the real device.**  The integration has no
+endpoint for it, but the Tide16 does: read `get_settings` ->
+`data.dolby.profile`, write
+`{"endpoint": "set_dolby_profile", "profile": "movie"}`.  So
+`scripts/tide16_dolby.py` talks to the unit's own websocket, exposed as a
+`command_line` sensor for the read and a `shell_command` for the write,
+with `homeassistant.update_entity` fired straight after a set so the card
+never shows a stale selection.  The column now reflects what the
+processor is actually doing, and tapping it changes the processor.
+
+> The script runs inside the Home Assistant container, so it uses
+> **aiohttp**, not `websockets` - the latter is not installed there.  A
+> second connection alongside the integration's own is fine; the device
+> accepts concurrent clients.  With the unit off it prints `unknown`, so
+> the sensor degrades to the panel's `-` rather than going unavailable.
+
+**Fixed:** `tide16-inputs` cells inherited the grid default
+`min-height: auto`, so a cell taller than its `1fr` track grew the track
+instead of overflowing it - which walked the rows up to 12px clear of
+whatever the box was aligned to.
+
+**The output-channel legend latches.**  It reads a new trigger-based
+`sensor.tide16_channel_names_held` instead of `sensor.tide16_channel_levels`
+directly.  The live sensor goes unavailable with the unit and took the
+whole legend with it, but the assignment only changes when the speaker
+layout is reconfigured - so the last known list is what a dark panel
+should keep showing.  Trigger-based because it has to read its own
+previous value through `this`, and because those entities restore across
+a restart; a minute tick re-latches it, since the attribute-change
+trigger alone would never fire on a layout that never changes.
+
+**Licensing is now stated file by file.**  The MIT grant covers the
+source code only - `dist/`, `lovelace/`, `packages/`, `integration/` -
+and `LICENSE` says so, so it no longer reads as covering everything when
+opened on its own.  Every binary in `assets/` and `docs/` is listed in
+the README with its origin and status; all ten are **excluded**, since
+none are original artwork and several have unconfirmed provenance.
+Previously only `bt.png` and `reboot.png` were called out, which left
+the plate art, the Dolby and Dirac marks, `power.png` and the screenshot
+riding on the grant by omission.
+
 ## v1.1.0 - 2026-07-26
 
 The card was one element - a bar meter - on a photo of the plate.  It is

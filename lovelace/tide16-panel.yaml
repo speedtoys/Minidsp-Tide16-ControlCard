@@ -133,6 +133,14 @@
               # dimmed pieces - the "Output Channels:" heading and the
               # output numbers - come up to the grey the names used to be.
               - type: custom:tide16-channels
+                # The HELD list, not sensor.tide16_channel_levels: the
+                # live one goes unavailable with the unit and used to take
+                # the whole legend with it. The assignment only changes
+                # when the speaker layout is reconfigured, so the last
+                # known list stays correct on a dark panel. See
+                # packages/tide16_panel.yaml.
+                entity: sensor.tide16_channel_names_held
+                attribute: channel_names
                 font_size: 0.78cqw
                 gap: 0.88cqw
                 color: "#FFFFFF"
@@ -215,6 +223,127 @@
                   width: "3.216%"
                   height: "36.047%"
                   transform: translate(0, 0)
+              # Dolby profile column, in the void to the LEFT of the power
+              # button - i.e. between the Scenes column and the standby
+              # button. The plate art carries no ink between x800 and
+              # x1121 (the standby button runs x1122..1213), and the
+              # Scenes overlay ends at x918.7, so the free span is
+              # x919..1121 and the column is centred on x=1020.
+              #
+              # Registered to the Scenes column rather than measured
+              # independently: the heading sits on the same line as
+              # "Scenes:" (its text box tops at y100.9) and the four
+              # options take the scene buttons' own box - same `top`, same
+              # `height`, same gap. That is not a coincidence that needs
+              # maintaining, it is arithmetic: 4 rows of 1fr in a 144.2px
+              # box with a 23.7px gap are 18.3px tall on a 42px pitch,
+              # which IS the colour bars' pitch, and the cells centre
+              # their labels. Move the scenes and this follows.
+              #
+              # The heading's "Dolby" is the double-D mark, not type -
+              # /local/tide16/dolby.png is the supplied art keyed off its
+              # opaque black background (alpha = luminance, so the
+              # antialiased edges survive) and recoloured to the same
+              # #BFC0C0 as the title text, so mark and word read as one
+              # heading. Cropped to its own ink, which is what lets
+              # title_image_scale mean cap height and be true.
+              - type: custom:tide16-readout
+                title: Profiles
+                title_image: /local/tide16/dolby.png?v=1
+                title_image_alt: Dolby
+                title_size: 1.070cqw
+                title_color: "#BFC0C0"
+                title_gap: "0"
+                align: center
+                style:
+                  left: "46.181%"
+                  top: "25.225%"
+                  width: "10.201%"
+                  transform: translate(0, 0)
+              # The options themselves. Same element as the source
+              # selector, so the dot-and-label and the white/underlined/
+              # larger active state are the ones already on the plate -
+              # one column of four rather than six of two. Sizes are the
+              # source rows' own ratios rescaled to the Scenes type
+              # (1.070cqw): dot 0.938x, dot_gap 0.376x, active 1.187x.
+              #
+              # active_attribute MUST be null - it defaults to `source`
+              # for the media_player it was written against, and here the
+              # live value is the input_select's own state.
+              #
+              # NOT WIRED TO THE DEVICE: the integration has no upmixer
+              # endpoint, so these set an HA input_select and nothing
+              # else. See packages/tide16_panel.yaml.
+              - type: custom:tide16-inputs
+                columns: 1
+                rows: 4
+                row_gap: 1.190cqw
+                dot: 1.004cqw
+                dot_gap: 0.402cqw
+                size: 1.070cqw
+                # 300 to match the "Profiles" heading exactly. The source
+                # rows use the element's default 400, which at this size
+                # reads noticeably larger than the headings beside it.
+                weight: "300"
+                color: "#B7B8B8"
+                # The DEVICE's own profile, read back over its websocket
+                # by scripts/tide16_dolby.py. Each item carries a `value`
+                # because the firmware's values are lowercase while the
+                # labels are title case.
+                active_entity: sensor.tide16_dolby_profile_live
+                active_attribute: null
+                active_color: "#FFFFFF"
+                # Weight, not size: every row has to stay level with its
+                # scene bar, and 1.070cqw IS the "Profiles" heading size,
+                # so the selection reads as bold rather than as a
+                # different-sized row.
+                active_weight: "700"
+                items:
+                  - text: Movie
+                    value: movie
+                    hint: "Set Dolby profile: Movie"
+                    tap:
+                      action: script.tide16_set_dolby_profile
+                      data:
+                        profile: movie
+                  - text: Music
+                    value: music
+                    hint: "Set Dolby profile: Music"
+                    tap:
+                      action: script.tide16_set_dolby_profile
+                      data:
+                        profile: music
+                  # Night, not Game: the firmware's profile list is
+                  # off/movie/music/night. `game` exists in the device's
+                  # web UI source but is commented out, so it cannot be
+                  # selected on this unit.
+                  - text: Night
+                    value: night
+                    hint: "Set Dolby profile: Night"
+                    tap:
+                      action: script.tide16_set_dolby_profile
+                      data:
+                        profile: night
+                  # Both of these MUST stay quoted - YAML 1.1 reads a
+                  # bare off as boolean false, which silently sends
+                  # `profile: False` to the device and never matches the
+                  # sensor's "off". Same trap as the input_select list.
+                  - text: "Off"
+                    value: "off"
+                    hint: "Turn the Dolby profile off"
+                    tap:
+                      action: script.tide16_set_dolby_profile
+                      data:
+                        profile: "off"
+                # The rows are left-aligned in this box, so `left` IS the
+                # dot column - set so the widest row (dot x977.5 through
+                # "Movie" ending x1063.5) centres on the void's x=1020.
+                style:
+                  left: "49.121%"
+                  top: "36.473%"
+                  width: "4.472%"
+                  height: "36.047%"
+                  transform: translate(0, 0)
               # Volume. "dB" is BAKED into the plate at x280-313, so the
               # decimal is left-aligned to it (x=280) and the integer is
               # RIGHT-aligned just short of it (x=274) - right-aligned so
@@ -222,38 +351,76 @@
               # instead of the decimal point sliding.
               # The two share a baseline by construction: integer digits
               # end at y147.2, decimal digits at y147.6.
-              - type: state-label
-                entity: sensor.tide16_volume_integer
-                style:
-                  right: "86.231%"
-                  left: unset
-                  top: "24.189%"
-                  transform: "translate(0, 0)"
-                  font-size: 3.176cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#E7E8E8"
-                  pointer-events: none
-              - type: state-label
-                entity: sensor.tide16_volume_decimal
-                prefix: "."
-                style:
-                  left: "14.070%"
-                  top: "30.259%"
-                  transform: "translate(0, 0)"
-                  font-size: 1.673cqw
-                  font-weight: "300"
-                  line-height: "1"
-                  margin: "-8px"
-                  white-space: nowrap
-                  color: "#DFE0E0"
-                  pointer-events: none
+              #
+              # SPLIT IN TWO by availability. That baseline construction
+              # only holds for DIGITS: a hyphen's ink is centred on the em
+              # box rather than sitting on the baseline, so drawing the
+              # placeholder through the same two elements put the big dash
+              # high, the small dash lower and the decimal point lower
+              # still - three stray marks instead of "-.-". When the
+              # device is down the whole reading is therefore drawn as one
+              # string at one size, and reads as a number should.
+              #
+              # Both branches key off sensor.tide16_volume_integer being
+              # its own placeholder; a real volume can never render "-".
+              - type: conditional
+                conditions:
+                  - entity: sensor.tide16_volume_integer
+                    state_not: "-"
+                elements:
+                  - type: state-label
+                    entity: sensor.tide16_volume_integer
+                    style:
+                      right: "86.231%"
+                      left: unset
+                      top: "24.189%"
+                      transform: "translate(0, 0)"
+                      font-size: 3.176cqw
+                      font-weight: "300"
+                      line-height: "1"
+                      margin: "-8px"
+                      white-space: nowrap
+                      color: "#E7E8E8"
+                      pointer-events: none
+                  - type: state-label
+                    entity: sensor.tide16_volume_decimal
+                    prefix: "."
+                    style:
+                      left: "14.070%"
+                      top: "30.259%"
+                      transform: "translate(0, 0)"
+                      font-size: 1.673cqw
+                      font-weight: "300"
+                      line-height: "1"
+                      margin: "-8px"
+                      white-space: nowrap
+                      color: "#DFE0E0"
+                      pointer-events: none
+              # Placeholder reading. tide16-readout rather than a
+              # state-label because the text is literal, and its box takes
+              # the integer's own right/top unchanged - the element has no
+              # padding to cancel, so "-8px" is simply absent rather than
+              # different.
+              - type: conditional
+                conditions:
+                  - entity: sensor.tide16_volume_integer
+                    state: "-"
+                elements:
+                  - type: custom:tide16-readout
+                    title: "-.-"
+                    title_size: 3.176cqw
+                    title_color: "#E7E8E8"
+                    title_gap: "0"
+                    align: right
+                    style:
+                      right: "86.231%"
+                      left: unset
+                      top: "24.189%"
+                      transform: translate(0, 0)
               # Source value, left-aligned under the baked "Source" label
               # (its ink starts at x=134) in the same cell.
               - type: state-label
-                entity: sensor.tide16_source
+                entity: sensor.tide16_source_display
                 style:
                   left: "6.734%"
                   top: "49.929%"
@@ -267,7 +434,7 @@
                   pointer-events: none
               # Speaker layout, under the baked "Listening" label (x=515).
               - type: state-label
-                entity: sensor.tide16_speaker_config
+                entity: sensor.tide16_speaker_config_display
                 style:
                   left: "25.879%"
                   top: "64.723%"
@@ -355,7 +522,7 @@
                   top: "58.726%"
                   transform: translate(0, 0)
               - type: state-label
-                entity: sensor.tide16_preset
+                entity: sensor.tide16_preset_display
                 attribute: preset_index
                 style:
                   left: "34.372%"
@@ -369,7 +536,7 @@
                   color: "#BFC0C0"
                   pointer-events: none
               - type: state-label
-                entity: sensor.tide16_preset
+                entity: sensor.tide16_preset_display
                 style:
                   left: "34.372%"
                   top: "71.431%"
@@ -749,7 +916,7 @@
               # A readout with a title and no rows is the card's
               # static-text element.
               - type: custom:tide16-readout
-                title: v1.1
+                title: v1.1.5
                 title_size: 0.980cqw
                 title_color: "#000"
                 title_gap: "0"

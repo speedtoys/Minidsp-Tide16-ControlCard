@@ -360,6 +360,9 @@ const CH_DEFAULTS = {
   channels: 16,
   show_unassigned: false,
   label: 'Output Channels:',
+  // Drawn after the heading when the device is off and there is no
+  // assignment list to render at all.
+  placeholder: '-',
   // Sized in cqw like the rest of the card so it tracks the card width;
   // 1.2 sits just above the plate's own speaker-config label (1.144cqw).
   // The px floor is what makes the two-column fallback trigger at all -
@@ -468,7 +471,6 @@ class Tide16Channels extends HTMLElement {
   _paint(names) {
     if (!this._row) return;
     this._row.innerHTML = '';
-    if (!names) return;
 
     if (this._cfg.label) {
       const lead = document.createElement('span');
@@ -478,6 +480,20 @@ class Tide16Channels extends HTMLElement {
       lead.style.gridColumn = '1 / -1';
       lead.style.gridRow = '1';
       this._row.appendChild(lead);
+    }
+
+    // Device down: the assignment list doesn't exist at all, so there is
+    // nothing to number. One dash after the heading, rather than sixteen
+    // of them or - as this used to do - dropping the heading too and
+    // leaving a silent gap under the plate.
+    if (!names) {
+      const gone = document.createElement('span');
+      gone.className = 'off';
+      gone.textContent = this._cfg.placeholder;
+      gone.style.gridColumn = '1';
+      gone.style.gridRow = '2';
+      this._row.appendChild(gone);
+      return;
     }
 
     const total = this._cfg.show_unassigned
@@ -947,13 +963,23 @@ if (!customElements.get('tide16-knob-labels')) {
  * ATTRIBUTES of sensor.tide16_stream, and one box here is far easier to
  * keep inside its cell than four separately-positioned labels.
  *
- * A value that is missing, unknown or unavailable prints as nothing at
- * all, leaving a bare "Decoder:" exactly like the device shows when it
- * has no signal to describe.
+ * A value that is missing, unknown or unavailable prints as `placeholder`
+ * ("-" by default), so a powered-down Tide16 reads "Decoder: -" instead
+ * of a bare dangling "Decoder:". Rows carrying no `entity` are static
+ * text and never get one.
  *
  * With no `rows` it degenerates to a single static line, which is how
  * the red MUTE flag is drawn - wrap it in a picture-elements
  * `conditional` to gate it on switch.tide16_mute.
+ *
+ * `title_image` puts a mark before the title text, which is how the
+ * "Dolby Profiles" heading is drawn - the word "Dolby" is the double-D,
+ * not type. The row is a baseline-aligned inline-flex, so the mark's
+ * BOTTOM lands on the text's baseline, and `title_image_scale` is its
+ * height in em: the 0.715 default is Roboto's cap height, so the mark
+ * measures exactly as tall as the capital P beside it. Sizing it off the
+ * em box instead would leave it floating, since a font's em box is
+ * taller than its capitals.
  *
  * Positioning: give it left/top as usual, or set `right` and leave
  * `left: unset` and the width shrink-wraps the text, so the box's RIGHT
@@ -969,10 +995,15 @@ const READOUT_DEFAULTS = {
   title_color: '#808080', // the grey the plate's own "Source"/"Program" are printed in
   title_size: '0.805cqw', // measured off that same baked label
   title_gap: '0.15cqw',
+  title_image: null, // a mark drawn before the title text
+  title_image_scale: 0.715, // its height in em - Roboto's cap height
+  title_image_gap: '0.3em',
+  title_image_alt: null, // the word the mark stands in for
   color: '#B7B8B8',
   size: '0.45cqw',
   row_gap: '0.10cqw',
   align: 'left',
+  placeholder: '-',
   rows: [],
 };
 
@@ -1011,6 +1042,28 @@ class Tide16Readout extends HTMLElement {
           color: ${c.title_color};
           padding-bottom: ${c.title_gap};
         }
+        /* Block-level flex, NOT inline-flex: an inline-level heading is
+           laid out on a line box, and the parent's own strut then adds
+           leading above it, which pushed this heading 7.4px below the one
+           it is meant to sit level with. Block-level starts flush at the
+           top of the box, so the YAML's top offset means what it says.
+           Block-level also means text-align no longer reaches it, hence
+           justify-content off the same align option.
+           NOTE: no backticks in here - this is inside a template literal
+           and one would end the string. */
+        .title.marked {
+          display: flex;
+          align-items: baseline;
+          justify-content: ${
+            c.align === 'right' ? 'flex-end' : c.align === 'center' ? 'center' : 'flex-start'
+          };
+          gap: ${c.title_image_gap};
+        }
+        .title .mark {
+          flex: none;
+          height: ${c.title_image_scale}em;
+          width: auto;
+        }
         .row {
           font-size: ${c.size};
           font-weight: 300;
@@ -1026,7 +1079,24 @@ class Tide16Readout extends HTMLElement {
 
     // textContent rather than interpolation, so a label or a value that
     // happens to contain markup stays text
-    if (c.title) root.querySelector('.title').textContent = c.title;
+    if (c.title) {
+      const t = root.querySelector('.title');
+      if (c.title_image) {
+        t.classList.add('marked');
+        const mk = document.createElement('img');
+        mk.className = 'mark';
+        mk.src = c.title_image;
+        // The mark stands in for a word, so it needs that word's name -
+        // otherwise the heading reads as just "Profiles" to a screen
+        // reader and to anyone whose images failed to load.
+        mk.alt = c.title_image_alt == null ? '' : String(c.title_image_alt);
+        const tx = document.createElement('span');
+        tx.textContent = c.title;
+        t.append(mk, tx);
+      } else {
+        t.textContent = c.title;
+      }
+    }
     this._rowEls = [...root.querySelectorAll('.row')];
     this._paint();
   }
@@ -1042,12 +1112,15 @@ class Tide16Readout extends HTMLElement {
   }
 
   _value(row) {
-    if (!this._hass || !row.entity) return '';
+    // A row with no entity is static text - it has nothing to be missing.
+    if (!row.entity) return '';
+    const gone = this._cfg.placeholder;
+    if (!this._hass) return gone;
     const st = this._hass.states[row.entity];
-    if (!st) return '';
+    if (!st) return gone;
     const v = row.attribute ? st.attributes[row.attribute] : st.state;
-    if (v === undefined || v === null || v === '') return '';
-    return ['unknown', 'unavailable'].includes(String(v)) ? '' : String(v);
+    if (v === undefined || v === null || v === '') return gone;
+    return ['unknown', 'unavailable'].includes(String(v)) ? gone : String(v);
   }
 
   getCardSize() {
@@ -1101,6 +1174,11 @@ const INPUT_DEFAULTS = {
   dot: '0.653cqw', // diameter of the round button
   dot_gap: '0.302cqw', // between the button and its label
   size: '0.704cqw',
+  // 400 is the source rows' own weight. The Dolby column sets 300 to
+  // match the plate's headings: at an IDENTICAL font-size, 400 against
+  // the heading's 300 reads as a bigger label, not just a heavier one -
+  // which is why matching only the size looked like nothing had changed.
+  weight: '400',
   color: '#B7B8B8',
   // the live source is read off an entity attribute and matched against
   // each item's text (or its `value`, if the label differs from what the
@@ -1112,6 +1190,10 @@ const INPUT_DEFAULTS = {
   // leaves it at `size`. Cells are align-items: center, so a taller label
   // grows about the row's middle and cannot shift the row it sits in.
   active_size: null,
+  // ...or heavier instead of larger, which is what the Dolby column uses:
+  // its rows have to stay level with the scene bars beside them, and
+  // weight marks the selection without touching the type size at all.
+  active_weight: null,
   background: '#333333',
   border: '1px solid #666666',
   items: [],
@@ -1180,6 +1262,16 @@ class Tide16Inputs extends HTMLElement {
           gap: ${c.dot_gap};
           white-space: nowrap;
           user-select: none;
+          /* Grid items default to min-height: auto, so a cell taller than
+             its 1fr track grows the track instead of overflowing it, and
+             the rows walk off whatever the box was aligned to. The Dolby
+             column is exactly that case - 20px dot and 21px type in an
+             18.3px track - and without this its rows drift up to 12px
+             clear of the scene bars they are supposed to sit level with.
+             At 0 the track stays 1fr and the content overflows centred,
+             so the row's midline is the track's midline. No effect on the
+             source grid, whose type is shorter than its rows. */
+          min-height: 0;
         }
         .dot {
           box-sizing: border-box;
@@ -1192,7 +1284,7 @@ class Tide16Inputs extends HTMLElement {
         }
         .lbl {
           font-size: ${c.size};
-          font-weight: 400;
+          font-weight: ${c.weight};
           line-height: 1;
           letter-spacing: 0.03em;
           color: ${c.color};
@@ -1204,6 +1296,7 @@ class Tide16Inputs extends HTMLElement {
         .cell.on .lbl {
           color: ${c.active_color};
           ${c.active_size ? `font-size: ${c.active_size};` : ''}
+          ${c.active_weight ? `font-weight: ${c.active_weight};` : ''}
           text-decoration: underline;
           text-underline-offset: 0.22em;
           text-decoration-thickness: from-font;
@@ -1261,7 +1354,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.0';
+const TIDE16_VERSION = '1.1.5';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

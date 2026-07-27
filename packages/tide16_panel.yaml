@@ -3,6 +3,33 @@
 # decimal part, so the two halves are split here rather than in the card.
 
 script:
+  # Set the Dolby profile ON THE DEVICE, then pull the reading straight
+  # back. Without the update_entity the card would keep showing the old
+  # profile for up to a minute (the command_line sensor's scan_interval),
+  # which reads as a tap that did nothing.
+  tide16_set_dolby_profile:
+    alias: Tide16 Set Dolby Profile
+    # queued for the same reason as the volume step: the column gets
+    # tapped in bursts and `single` would silently drop the later ones.
+    mode: queued
+    max: 6
+    fields:
+      profile:
+        name: Profile
+        description: One of off, movie, music, night (the firmware's own list)
+        required: true
+        selector:
+          select:
+            # quoted: bare off is boolean false in YAML 1.1
+            options: ["off", movie, music, night]
+    sequence:
+      - action: shell_command.tide16_set_dolby_profile
+        data:
+          profile: "{{ profile }}"
+      - action: homeassistant.update_entity
+        target:
+          entity_id: sensor.tide16_dolby_profile_live
+
   # The panel's Vol: +/-N labels are RELATIVE steps, but Lovelace tap
   # actions carry only literal data - no templates - so the arithmetic
   # (and the clamp) has to live server-side. number.tide16_volume is the
@@ -55,6 +82,54 @@ script:
               entity_id: media_player.tide16
 
 template:
+  # The output-channel assignment LATCHES. It comes from
+  # sensor.tide16_channel_levels, which goes unavailable with the unit,
+  # taking `channel_names` with it - so the legend under the plate used
+  # to empty out every time the Tide16 was switched off. The assignment
+  # only changes when the speaker layout is reconfigured, which is close
+  # to never, so the last known list is still the right thing to show on
+  # a dark panel.
+  #
+  # Trigger-based (not a plain template sensor) for two reasons: it can
+  # read its OWN previous value through `this`, which is what makes the
+  # hold possible at all, and trigger-based entities restore their state
+  # across a Home Assistant restart, so the list survives a reboot while
+  # the unit is off. A plain template sensor re-evaluates from scratch
+  # and would blank again.
+  - trigger:
+      - platform: state
+        entity_id: sensor.tide16_channel_levels
+        attribute: channel_names
+      - platform: homeassistant
+        event: start
+      # The attribute trigger alone is not enough to ever populate this:
+      # the layout almost never changes, so on a fresh setup or after a
+      # template reload the entity would sit at `unknown` indefinitely,
+      # waiting for an event that does not come. The tick re-latches the
+      # live list when there is one and re-emits the held one when there
+      # is not, so the value is always at most a minute stale.
+      - platform: time_pattern
+        minutes: "/1"
+    sensor:
+      - name: "Tide16 Channel Names Held"
+        unique_id: tide16_channel_names_held
+        # State is the count purely so the entity has something short and
+        # legible; the card reads the attribute.
+        state: >
+          {{ (this.attributes.get('channel_names') or []) | count
+             if (state_attr('sensor.tide16_channel_levels','channel_names') is not iterable
+                 or state_attr('sensor.tide16_channel_levels','channel_names') is string
+                 or (state_attr('sensor.tide16_channel_levels','channel_names') or []) | count == 0)
+             else (state_attr('sensor.tide16_channel_levels','channel_names') | count) }}
+        attributes:
+          channel_names: >
+            {% set live = state_attr('sensor.tide16_channel_levels','channel_names') %}
+            {% if live is iterable and live is not string and (live | count) > 0 %}
+              {{ live | tojson }}
+            {% else %}
+              {{ (this.attributes.get('channel_names') or []) | tojson }}
+            {% endif %}
+
   # Is the incoming programme actually Dolby Atmos? The panel's on-screen
   # Atmos badge is gated on this. Matched on substring rather than an
   # exact state because the device reports the format free-form via
@@ -69,6 +144,26 @@ template:
           {% set dec = state_attr('sensor.tide16_stream', 'decoder_type') %}
           {{ 'atmos' in ((st ~ ' ' ~ (dec or '')) | lower) }}
 
+  # ---- Screen fields -------------------------------------------------
+  #
+  # NONE of these are `availability:` gated, deliberately. When the Tide16
+  # is off its whole entity set goes `unavailable`, and picture-elements
+  # `state-label` prints that state LOCALIZED - so the panel filled up
+  # with the word "Unavailable", the volume one overflowing the screen
+  # window because it is right-aligned to the baked "dB" mark.
+  #
+  # So every field falls back to a single "-" instead. The volume is the
+  # only compound one: integer "-" + the card's `prefix: "."` + decimal
+  # "-" reads "-.-", which is what a dark panel should say.
+  #
+  # This is also why the integration's own source / speaker-config /
+  # preset entities are mirrored here rather than bound directly: they
+  # belong to @GaelFrance's component and cannot carry a placeholder, and
+  # a template sensor is cheaper than reworking the card's anchors.
+  #
+  # `-` is one em-dash-free ASCII hyphen on purpose - it is the glyph the
+  # device itself shows on a cold screen.
+
   # "48 kHz" for the Listening cell. Kept as a display string here rather
   # than formatted in the card, for the same reason the volume is split
   # into integer/decimal sensors: the panel prints it verbatim.
@@ -77,24 +172,57 @@ template:
   - sensor:
       - name: "Tide16 Sample Rate kHz"
         unique_id: tide16_rate_khz
-        availability: >
-          {{ state_attr('sensor.tide16_stream','sample_rate') not in
-             [none, '', 'unknown', 'unavailable'] }}
         state: >
-          {% set k = (state_attr('sensor.tide16_stream','sample_rate') | float(0) / 1000) | round(1) %}
-          {{ (k | int if k == k | round(0) else k) ~ ' kHz' }}
+          {% set r = state_attr('sensor.tide16_stream','sample_rate') %}
+          {% if r in [none, '', 'unknown', 'unavailable'] %}
+            -
+          {% else %}
+            {% set k = (r | float(0) / 1000) | round(1) %}
+            {{ (k | int if k == k | round(0) else k) ~ ' kHz' }}
+          {% endif %}
 
   - sensor:
       - name: "Tide16 Volume Integer"
         unique_id: tide16_volume_int
-        availability: "{{ states('number.tide16_volume') not in ['unknown','unavailable'] }}"
         state: >
-          {{ ('%.1f' | format(states('number.tide16_volume') | float(0))).split('.')[0] }}
+          {% set v = states('number.tide16_volume') %}
+          {{ '-' if v in ['unknown','unavailable']
+             else ('%.1f' | format(v | float(0))).split('.')[0] }}
 
       - name: "Tide16 Volume Decimal"
         unique_id: tide16_volume_dec
-        availability: "{{ states('number.tide16_volume') not in ['unknown','unavailable'] }}"
         # NOTE: returns digits only - HA coerces a leading "." into "0.5",
         # so the decimal point is supplied by the card element's prefix.
+        # The placeholder is bare "-" for the same reason: "-.-" is drawn
+        # as three separate pieces, not as one string.
         state: >
-          {{ ('%.1f' | format(states('number.tide16_volume') | float(0))).split('.')[1] }}
+          {% set v = states('number.tide16_volume') %}
+          {{ '-' if v in ['unknown','unavailable']
+             else ('%.1f' | format(v | float(0))).split('.')[1] }}
+
+      # Straight mirrors of the integration's entities, dashed when down.
+      - name: "Tide16 Source Display"
+        unique_id: tide16_source_display
+        state: >
+          {% set v = states('sensor.tide16_source') %}
+          {{ '-' if v in ['unknown','unavailable'] else v }}
+
+      - name: "Tide16 Speaker Config Display"
+        unique_id: tide16_speaker_config_display
+        state: >
+          {% set v = states('sensor.tide16_speaker_config') %}
+          {{ '-' if v in ['unknown','unavailable'] else v }}
+
+      # Both halves of the Preset cell in one sensor: the heading row
+      # prints the state, the row under it prints `preset_index`. Binding
+      # the raw entity's attribute also drew a yellow warning triangle
+      # while it was unavailable, which the placeholder removes.
+      - name: "Tide16 Preset Display"
+        unique_id: tide16_preset_display
+        state: >
+          {% set v = states('sensor.tide16_preset') %}
+          {{ '-' if v in ['unknown','unavailable'] else v }}
+        attributes:
+          preset_index: >
+            {% set i = state_attr('sensor.tide16_preset','preset_index') %}
+            {{ '-' if i in [none, '', 'unknown', 'unavailable'] else i }}

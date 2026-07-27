@@ -18,7 +18,8 @@ assigned and the legend names them; yours will show your own layout.*
 | `dist/tide16-bars.js` | Seven `picture-elements` **elements**, not a standalone card - each draws one thing and nothing else, so the artwork underneath shows through |
 | `assets/` | The front-panel plate, the format and Dirac marks, and the power / reboot / Bluetooth glyphs |
 | `lovelace/tide16-panel.yaml` | The complete view: meter, source selector, scenes, volume ring, every live readout |
-| `packages/tide16_panel.yaml` | The template sensors the panel prints (split volume, sample rate, Atmos flag) and the two scripts its knob and standby glyph call |
+| `packages/tide16_panel.yaml` | The template sensors the panel prints (split volume, sample rate, Atmos flag, the latched channel legend) and the scripts its knob, standby glyph and Dolby column call |
+| `scripts/tide16_dolby.py` | Reads and sets the Dolby profile on the device's own websocket, which the integration does not speak.  Only needed for the profile column |
 | `integration/` | A diff against the integration this depends on - **required**, see below |
 
 ## You need the original integration first
@@ -75,7 +76,31 @@ it whenever you update the file - the frontend caches hard.
 `configuration.yaml`), and add the recorder exclusion from
 [`integration/README.md`](integration/README.md).  Restart.
 
-**5. The view.** Use [`lovelace/tide16-panel.yaml`](lovelace/).  It also
+**5. The Dolby profile column** (optional - skip it and delete that
+element from the view).  Copy `scripts/tide16_dolby.py` into
+`config/scripts/`, edit the `HOST` at the top to your Tide16's address,
+and add to `configuration.yaml`:
+
+```yaml
+shell_command:
+  tide16_set_dolby_profile: >-
+    python3 /config/scripts/tide16_dolby.py set {{ profile }}
+
+command_line:
+  - sensor:
+      name: Tide16 Dolby Profile Live
+      unique_id: tide16_dolby_profile_live
+      command: "python3 /config/scripts/tide16_dolby.py read"
+      scan_interval: 60
+      command_timeout: 15
+```
+
+This exists because the integration has no endpoint for the profile
+while the device does - the script talks to the unit's own websocket.  It
+runs inside the Home Assistant container, so it uses aiohttp rather than
+`websockets`, which is not installed there.
+
+**6. The view.** Use [`lovelace/tide16-panel.yaml`](lovelace/).  It also
 needs [card-mod](https://github.com/thomasloven/lovelace-card-mod) from
 HACS for the `scale()` wrapper that fits the plate to the page; delete
 that `card_mod` block if you'd rather not have the dependency, and the
@@ -366,16 +391,39 @@ also MIT, and is not redistributed here - install it from his repo.  The
 patch necessarily quotes a few lines of his as diff context, under that
 same license.
 
-`assets/plate-v2.png` and the format marks are front-panel artwork of the
-miniDSP Tide16, edited to remove the baked-in readings so live values can
-be painted back on.  `assets/reboot.png` and `assets/bt.png` are
-recoloured and background-stripped from third-party icon art supplied by
-the repo owner; they are **not** covered by the MIT grant above unless
-their own licensing allows it.  Swap in your own if in doubt.
+### Image assets - what the MIT grant does NOT cover
 
-The names miniDSP, Tide16, Dolby Atmos, DTS:X, DIRAC, HDMI and Bluetooth
-are trademarks of their respective owners, used here to depict the device
-this card controls.  Not affiliated with or endorsed by miniDSP.
+**The MIT license above applies to the source code only: `dist/`,
+`lovelace/`, `packages/` and `integration/`.  It does not grant any
+rights in the image assets.**  Every binary shipped in this repo is
+listed below.  None of them are original artwork, so treat the whole of
+`assets/` and `docs/` as excluded unless you have confirmed otherwise
+for the file you want.
+
+| File | What it is | Status |
+|---|---|---|
+| `assets/plate-v2.png` | Front-panel artwork of the miniDSP Tide16, redrawn and stripped of its baked-in readings so live values can be painted back on | Depicts a miniDSP product.  **Excluded** |
+| `assets/plate.png` | The original photographic plate, superseded by `plate-v2.png` and kept only for history | Photograph of a miniDSP product.  **Excluded** |
+| `assets/dolby.png` | The Dolby double-D, used as the word "Dolby" in the profile heading.  Supplied by the repo owner; keyed off its background and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `assets/dolby-atmos.png` | The Dolby Atmos lockup shown in the LCD when Atmos is decoding | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `assets/dirac.png`, `assets/dirac-a.png` | The Dirac Live mark, lit when Dirac is engaged | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `assets/bt.png` | The Bluetooth mark on the pairing control.  Supplied by the repo owner, background-stripped and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `assets/reboot.png` | The reboot glyph.  Supplied by the repo owner as line art, recoloured and cropped here | Third-party icon art, provenance unconfirmed.  **Excluded** |
+| `assets/power.png` | The standby glyph, recoloured to match the reboot one | Provenance unconfirmed.  **Excluded** |
+| `docs/screenshot.png` | A photograph-equivalent render of the running card | Contains every mark above.  **Excluded** |
+
+Recolouring, cropping and background-stripping are edits, not authorship:
+nothing in that table became MIT by being processed here.  If you intend
+to redistribute this repo, or to ship it anywhere the above matters,
+either confirm each file's own licensing or replace it - the card reads
+every one of them from a path in the YAML, so substituting your own art
+is a one-line change per file and nothing in `dist/` needs touching.
+
+The names miniDSP, Tide16, Dolby, Dolby Atmos, DTS:X, DIRAC, Dirac Live,
+HDMI and Bluetooth are trademarks of their respective owners, used here
+only to depict the device this card controls.  Not affiliated with,
+endorsed by, or sponsored by miniDSP, Dolby Laboratories, Dirac, DTS,
+HDMI Licensing or Bluetooth SIG.
 
 [hacs-badge]: https://img.shields.io/badge/HACS-Custom-41BDF5.svg
 [hacs-url]: https://github.com/hacs/integration
