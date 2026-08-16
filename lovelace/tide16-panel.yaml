@@ -773,9 +773,10 @@
                   top: "16.750%"
                   width: "2.412%"
                   transform: translate(0, 0)
-              # Power glyph over the standby button (centre x=1158, top
-              # edge y=137), 9px clear of it. Ceiling is the "Scenes:"
-              # heading, whose cap top computes to y=78 - this sits at 80.
+              # Power glyph, ON the standby dome rather than above it -
+              # that dome IS the system's power button on the real front
+              # panel, so the symbol belongs inside it, not hovering over
+              # it with its own painted-on dish.
               # custom:tide16-glyph, not the built-in `image`: the built-in
               # accepts a `title` but hangs it where the cursor never lands,
               # so the power glyph was the one control on the plate with no
@@ -790,44 +791,50 @@
                 hint: Power off the Tide16
                 tap:
                   action: script.tide16_power_off
-                # Concave panel button. The BOX is the dish, so it needs a
-                # height as well as a width or it comes out oval: 48x48
-                # canvas px (2.412% of 1990, 12.000% of 400), centred on
-                # x=1150.9 like the reboot glyph below it.
-                # Pulled 5px further off the standby button than the icon
-                # used to sit - box bottom y123 against the button's top
-                # edge at y137, so 14px of clearance rather than 9. A dish
-                # needs more air than a bare glyph or it crowds the real
-                # button beneath it.
-                # 48px dish, icon 33px (0.688 of it).
+                # Lit by state: the PNG becomes a mask and these are the
+                # colours it is painted in - see tide16-glyph. Anything
+                # that is not a live `on` reads as off, which is the only
+                # honest mapping here: standby takes the unit off the
+                # network, so its entities go unavailable rather than off.
+                color_entity: media_player.tide16
+                color_on: "#B300FF"
+                color_off: "#F52727"
+                # Centred on the dome, and the dome's centre is measured
+                # from its POLES, not from an ink bounding box. That bbox
+                # centres on 1161.5, but it is wrong: the dome carries a
+                # bright specular highlight and a soft shadow down its
+                # RIGHT side, which a threshold reads as real geometry.
+                # Scanlines y140, y150, y250 and y260 all come out
+                # symmetric about x=1151.0, and the poles sit at y138 and
+                # y263 - so the face is 125px across, centred (1151,200.5).
                 #
-                # Centred on x=1151.0, NOT on the ink bounding box of the
-                # standby button. That bbox centres on 1161.5, but it is
-                # wrong: the dome carries a bright specular highlight and
-                # a soft shadow down its RIGHT side, which a threshold
-                # reads as real geometry. Measure the circle's top and
-                # bottom POLES instead - y140, y150, y250 and y260 all
-                # come out symmetric about 1151.0. Anything centred on the
-                # bbox sits ~10px right of the button it belongs to.
+                # No `button: true`: the dish is already painted into the
+                # plate art. Drawing another one on top would hide the
+                # hardware it is meant to be sitting in.
                 #
-                # Bottom edge y129 against the button's top at y138, so
-                # 9px of clearance, mirrored by the reboot dish below.
-                button: true
-                icon_scale: 0.688
+                # 49.5px tall - half again the 33px the glyph used to be
+                # (0.688 of the old 48px dish). The art is 162x174, so the
+                # BOX carries that aspect: 46.1 x 49.5 canvas px, i.e.
+                # 2.316% of 1990 and 12.375% of 400. A masked glyph has no
+                # intrinsic size of its own, so the box is what decides.
+                # left/top are the box's top-left corner, hence centre
+                # minus half: (1151 - 23.05)/1990, (200.5 - 24.75)/400.
                 style:
-                  left: "56.633%"
-                  top: "20.250%"
-                  width: "2.412%"
-                  height: "12.000%"
+                  left: "56.681%"
+                  top: "43.938%"
+                  width: "2.316%"
+                  height: "12.375%"
                   transform: translate(0, 0)
-              # Reboot glyph, the standby button's mirror image: same 9px
-              # clear of the button but off its BOTTOM edge (the art's ring
-              # fades out by y=264, so y=273), and centred on the same
-              # vertical as the power glyph above - centre x=1150.9.
-              # Sized to the power glyph's HEIGHT, not its width: 48 canvas
-              # px tall either way, which is what makes the pair read as
-              # one size even though the source art is square (273x274)
-              # and the power glyph is taller than it is wide.
+              # Reboot glyph, in the bottom corner of the black section -
+              # the Bluetooth PAIR button's mirror image, and measured off
+              # it rather than eyeballed:
+              #   same vertical, left 64.221% (centre x=1302)
+              #   same 48px box (2.412% x 12.000%)
+              #   same 4px between the glyph and its caption
+              #   the 15px PAIR sits from the very top is the 15px this
+              #   sits from the very bottom - so caption baseline box ends
+              #   on y385, its top is y369, the dish bottom is y365 and
+              #   the dish top y317 = 79.250%.
               # /local/tide16/reboot.png is the supplied line art recoloured
               # to the same #BFC0C0 as power.png, on transparency, with the
               # word "REBOOT" cropped off.
@@ -840,16 +847,55 @@
                 tap:
                   action: button.press
                   data: {entity_id: button.tide16_reboot}
-                # Same dish as the power button, mirrored below the
-                # standby button: box top y278 against the ring fading out
-                # at y264, so the same 14px of clearance.
+                # A press takes the unit off the network for about half a
+                # minute and the whole panel dashes out while it is gone,
+                # so the button rotates the power glyph's two hexes - on
+                # to off, a second a step - the entire time it is away.
+                # It stops the moment the unit answers again, so the flash
+                # IS the progress bar; measured on a real press, the unit
+                # was gone 23:43:55 -> 23:44:27, i.e. 32 seconds.
+                #
+                # busy_live_states is the load-bearing line. Through a
+                # reboot media_player.tide16 does NOT go unavailable - it
+                # reports `off` with status "not connected" - so only an
+                # explicit list of live states can tell a rebooting unit
+                # from a running one.
+                # 60s is the hard stop; if it has not come back by then
+                # the glyph rests at grey rather than flashing forever.
+                color: "#BFC0C0"
+                busy_colors: ["#B300FF", "#F52727"]
+                busy_interval: 1000
+                busy_min_steps: 5
+                busy_timeout: 60000
+                busy_entity: media_player.tide16
+                # QUOTED: bare on is a BOOLEAN in this YAML, so [on]
+                # reaches the card as [true] and never matches any state.
+                busy_live_states: ["on"]
                 button: true
                 icon_scale: 0.688
                 style:
-                  left: "56.633%"
-                  top: "68.000%"
+                  left: "64.221%"
+                  top: "79.250%"
                   width: "2.412%"
                   height: "12.000%"
+                  transform: translate(0, 0)
+              # "Reboot" under the dish, set up exactly as PAIR is under
+              # the Bluetooth mark: same box left/width as the glyph plus
+              # align: center, so the two stay registered to each other if
+              # either moves, and the same 4px drop below the art.
+              # Type is the Dolby profile list's - 0.804cqw / 400 /
+              # #B7B8B8 - which is what "Movie" is set in, and the same
+              # thing PAIR is already set in at the other end.
+              - type: custom:tide16-readout
+                title: Reboot
+                title_size: 0.804cqw
+                title_color: "#B7B8B8"
+                title_gap: "0"
+                align: center
+                style:
+                  left: "64.221%"
+                  top: "92.250%"
+                  width: "2.412%"
                   transform: translate(0, 0)
               # Volume/mute ring around the knob on the silver end panel.
               # The box IS the knob: centre (1681, 202.5) radius 113, so
@@ -887,6 +933,17 @@
                     tap:
                       action: script.tide16_volume_step
                       data: {delta: 10}
+                  # Coarse +/-20 on the lower diagonals - the only part of
+                  # the ring still free, and the two positions that keep the
+                  # ladder reading outward from the knob. `at` takes a
+                  # fraction, so 4.5 is half past four = 135 degrees and 7.5
+                  # is half past seven = 225 degrees, dead on the diagonal.
+                  - at: 4.5
+                    text: "Vol:+20"
+                    hint: Volume up 20 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: 20}
                   - at: 2
                     text: "Vol:+5"
                     hint: Volume up 5 dB
@@ -917,6 +974,12 @@
                     tap:
                       action: script.tide16_volume_step
                       data: {delta: -10}
+                  - at: 7.5
+                    text: "Vol:-20"
+                    hint: Volume down 20 dB
+                    tap:
+                      action: script.tide16_volume_step
+                      data: {delta: -20}
                 style:
                   left: "78.794%"
                   top: "22.375%"
@@ -933,7 +996,7 @@
               # A readout with a title and no rows is the card's
               # static-text element.
               - type: custom:tide16-readout
-                title: v1.1.8
+                title: v1.1.12
                 title_size: 0.980cqw
                 title_color: "#000"
                 title_gap: "0"

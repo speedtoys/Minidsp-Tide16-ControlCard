@@ -238,9 +238,11 @@ outside that circle.  That is the whole point: one box to measure, and
 every angle, instead of eight hand-tuned `left`/`top` pairs that drift
 the moment the card is rescaled.
 
-Each label is `{at, text, tap?, hint?}`, where `at` is a clock hour and
+Each label is `{at, text, tap?, hint?}`, where `at` is a clock position and
 `text` takes a list as readily as a string - a list stacks, one row per
-entry, which is how `Mute:` / `On` is drawn.
+entry, which is how `Mute:` / `On` is drawn.  A **fraction** is a fraction
+of an hour, so `4.5` is half past four - the 135 degree diagonal, which
+whole hours cannot reach.
 
 | Option | Default | |
 |---|---|---|
@@ -260,6 +262,34 @@ target.
 
 `{image, hint?, tap?}`.  Untapped it takes no pointer events at all, so
 it can't swallow a click meant for the plate underneath.
+
+`color_entity` paints the art from live state.  The PNG stops being an
+image and becomes a **mask**: its alpha is the shape and the colour is the
+element's own background, so one file serves both states and the hex is
+exact rather than whatever a filter chain lands on.  It wants flat line art
+on transparency, which is what the plate's glyphs are.  Anything outside
+`on_states` is off - including a missing entity, `unknown` and
+`unavailable`, which for a unit that leaves the network in standby is the
+only honest reading.
+
+`busy_colors` makes a tap flash the glyph until the thing it waits on
+answers again.  A reboot takes the Tide16 off the network for about half a
+minute and the whole panel dashes out while it is gone, so without this the
+button looks like it did nothing; the cycle is the progress bar.  Note
+`busy_live_states`: through a reboot the media_player reports `off`, *not*
+`unavailable`, so only an explicit list of live states can tell a rebooting
+unit from a running one.  The run also has to see the entity go down before
+a live reading may end it - for the first seconds after the press the unit
+is still answering.  Either exit lands back on the resting colour.
+
+| Option | Default | |
+|---|---|---|
+| `button` / `icon_scale` | `false` / `0.8` | Sinks the glyph into a concave panel dish |
+| `color` | - | One flat colour, masked |
+| `color_entity` / `color_on` / `color_off` / `on_states` | - / `#BFC0C0` / `#BFC0C0` / `['on']` | Colour from live state |
+| `busy_colors` | - | Colours a tap cycles through |
+| `busy_interval` / `busy_min_steps` / `busy_timeout` | `1000` / `5` / `60000` | ms / steps / ms |
+| `busy_entity` / `busy_live_states` | `color_entity` / `['on']` | What "answering again" means |
 
 ## Hover text
 

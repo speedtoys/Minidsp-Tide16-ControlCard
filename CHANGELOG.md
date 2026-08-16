@@ -1,5 +1,78 @@
 # Changelog
 
+## v1.1.12 - 2026-08-15
+
+Four changes to the panel's controls, and one bug that only a real reboot
+could have found.  (1.1.9 through 1.1.11 were steps taken on a live panel;
+they ship together here.)
+
+**The power symbol moved into the standby dome, and lights with the unit.**
+It used to float above the dome with its own painted-on dish, which put two
+buttons on the plate where the hardware has one.  It now sits *in* the dome -
+the real power button - half again as large, 33px of art to 49.5px, and
+coloured by state: `#B300FF` while the unit is on, `#F52727` when it is not.
+
+Centring it meant measuring the dome from its **poles**, not from an ink
+bounding box.  The dome carries a specular highlight and a soft shadow down
+its right side, which a threshold reads as real geometry: the bbox centres on
+x=1161.5, while scanlines y140, y150, y250 and y260 all come out symmetric
+about x=1151.0.  Anything centred on the bbox sits ~10px right of the button
+it belongs to.
+
+The colour comes from a new `color_entity` on `tide16-glyph`.  The PNG stops
+being an `<img>` and becomes a CSS **mask**: its alpha is the shape and the
+colour is the element's own background, so one file serves both states and
+the hex is exact rather than whatever a filter chain lands on.  Anything that
+is not a live `on` reads as off - unknown, unavailable, no entity at all.
+That fail-safe is the only honest mapping here: standby takes the Tide16 off
+the network, so "I cannot see it" and "it is off" are the same fact.
+
+**The reboot button moved to the bottom corner, and says what it is.**  It
+mirrors the Bluetooth PAIR button at the other end of the black section, and
+every number is taken from it rather than eyeballed: same vertical (x1278),
+same 48px box, same 4px between the glyph and its caption, and the 15px PAIR
+sits from the very top is the 15px this sits from the very bottom.  The
+caption is set in the Dolby profile list's type - 0.804cqw / 400 / `#B7B8B8` -
+so "Reboot" and "Movie" are the same words on the same panel.
+
+**A press now flashes the button until the unit is back.**  A reboot takes
+the Tide16 off the network for about half a minute and the whole panel dashes
+out while it is gone, so the one control with a real wait behind it was the
+one that looked like it had done nothing.  The glyph rotates the power
+symbol's two hexes - `#B300FF` to `#F52727`, a second a step - for as long as
+the unit is away, and stops on the first tick after it answers.  The flash is
+the progress bar.  60s is the hard stop: if it has not come back by then the
+glyph rests at grey rather than blinking forever.
+
+Two things have to be true for that to work, and the first attempt had both
+wrong.  Both were found by pressing the button, not by reading the code:
+
+- **`off` is not `unavailable`.**  Through a reboot the media_player reports
+  `off` with `status: "not connected"` - it never goes unavailable - so a
+  check that merely excluded unknown/unavailable read a rebooting unit as a
+  live one and ended the wait before it had begun.  Liveness is a whitelist
+  now: `busy_live_states`, default `['on']`.
+- **A unit can only come back if it went away first.**  For the seconds
+  between the press and the unit actually dropping off the network it is
+  still answering, so "live" on its own ended the cycle a beat after it
+  started.  The run waits to *see* it go down before a live reading may end
+  it.
+
+Measured on a real press: gone at 23:43:55, back at 23:44:27.  32 seconds,
+well inside the 60s stop.
+
+**Volume ±20 on the knob ring.**  The lower diagonals were the only part of
+the ring still free, and they keep the ladder reading outward from the knob.
+`at` takes a fraction, so 4.5 is half past four - 135 degrees - and 7.5 is
+half past seven, 225.  Whole hours leave the two corners unreachable for no
+reason at all.
+
+Also in the card, and not yet wired into the view this repo ships:
+`tide16-readout` rows can scroll when a value overflows its cell (`scroll`),
+and `tide16-inputs` can read the device's own sources map to grey out and
+disable the inputs the Tide16 has hidden, and to follow renames
+(`source_entity`).  Both want sensors that are not in `packages/` yet.
+
 ## v1.1.8 - 2026-07-27
 
 **Fixed: the idle panel often never started.**  `_syncKeepalive` runs

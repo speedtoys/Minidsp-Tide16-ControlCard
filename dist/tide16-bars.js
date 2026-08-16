@@ -240,6 +240,10 @@ const DEFAULTS = {
   // is exactly the trap that makes home-made meters look broken.
   //   ceiling = <ceiling_entity>   (falls back to ceiling_db)
   //   floor   = ceiling - range_db
+  //
+  // Tried the other way (fixed 0..-60 dBFS, the raw device numbers with no
+  // volume anchoring) and it read as dead bars at normal listening levels.
+  // Set ceiling_entity: null in YAML to get that back.
   ceiling_entity: 'number.tide16_volume',
   range_db: 40, // measured p05..max spanned ~38 dB below the volume setting
 
@@ -1097,7 +1101,45 @@ if (!customElements.get('tide16-buttons')) {
  * plate rather than sitting on it. With it, the box is the BUTTON and
  * `icon_scale` (0.8 default) is the glyph inside, so give the box a
  * `height` as well as a `width` or the dish will not be round.
+ *
+ * `color_entity` paints the art from live state - {color_entity,
+ * color_on?, color_off?, on_states?}. The PNG stops being an image and
+ * becomes a MASK: its alpha is the shape and the colour is the element's
+ * own background, so one file serves both states and the hex is exact
+ * rather than whatever a filter chain lands on. Needs flat line art on
+ * transparency, which is what the plate's glyphs are.
+ * `on_states` defaults to ['on']; ANY other state - including a missing
+ * entity, unknown or unavailable - is off. That fail-safe is deliberate
+ * for the power glyph: the Tide16 drops off the network in standby, so
+ * "I cannot see it" and "it is off" are the same fact.
+ * `color` is the same masking with no entity behind it - one flat colour.
+ *
+ * `busy_colors` makes a TAP flash the glyph until the unit answers again.
+ * A reboot takes the Tide16 off the network for most of a minute and the
+ * whole panel dashes out while it is gone, so without this the button
+ * looks like it did nothing at all. The cycle IS the progress bar:
+ *   busy_colors    the colours to step through, one per interval
+ *   busy_interval  ms per step (1000)
+ *   busy_min_steps steps to show before liveness may end it (5)
+ *   busy_timeout   hard stop in ms (60000), after which it rests again
+ *   busy_entity    what "answering again" means (defaults to color_entity)
+ *   busy_live_states  states that count as answering (['on'])
+ * Two things make the wait honest, and both were learned the hard way:
+ * the run must SEE the entity go down before a live reading can end it,
+ * and down has to be a whitelist - a rebooting Tide16 reports `off`, not
+ * `unavailable`, so "not unavailable" reads a dead unit as a live one.
+ * Either exit lands back on the resting colour - the glyph never stays
+ * stuck mid-cycle, however the wait ends.
  */
+
+// Fallbacks for a `color_entity` glyph that names no colours of its own.
+// The off colour is the plate's own glyph grey, so an untinted-looking
+// glyph is what you get if only the entity is given.
+const GLYPH_TINT_ON = '#BFC0C0';
+const GLYPH_TINT_OFF = '#BFC0C0';
+const GLYPH_BUSY_INTERVAL = 1000;
+const GLYPH_BUSY_MIN_STEPS = 5;
+const GLYPH_BUSY_TIMEOUT = 60000;
 
 class Tide16Glyph extends HTMLElement {
   constructor() {
@@ -1116,6 +1158,95 @@ class Tide16Glyph extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._paint();
+  }
+
+  /* The colour this glyph rests at: state-driven if it has an entity,
+     otherwise its one flat `color`. */
+  _restColor() {
+    const c = this._cfg;
+    if (c.color_entity && this._hass) {
+      const st = this._hass.states[c.color_entity];
+      const on = !!st && this._onStates.includes(String(st.state).toLowerCase());
+      return on ? c.color_on || GLYPH_TINT_ON : c.color_off || GLYPH_TINT_OFF;
+    }
+    return c.color || c.color_off || GLYPH_TINT_OFF;
+  }
+
+  /* Repaint a masked glyph. hass ticks at 4 Hz while the meter is on
+     screen, so this writes to the DOM only when the colour actually
+     changes - and never while a busy run is on, which owns the colour
+     until it ends. */
+  _paint() {
+    if (!this._ink || this._busy) return;
+    const col = this._restColor();
+    if (col === this._col) return;
+    this._col = col;
+    this._ink.style.background = col;
+  }
+
+  /* Is the thing this glyph waits on answering?
+     Whitelist, not blacklist, and that is the whole point: through a
+     reboot the Tide16's media_player does NOT go unavailable, it reports
+     `off` with status "not connected" - so anything that merely excluded
+     unknown/unavailable called a rebooting unit live and ended the wait
+     before it had begun. Only the states named in `busy_live_states`
+     (default ['on']) count as answering. */
+  _isLive() {
+    const c = this._cfg;
+    const ent = c.busy_entity || c.color_entity;
+    if (!ent || !this._hass) return false;
+    const st = this._hass.states[ent];
+    return !!st && this._liveStates.includes(String(st.state).toLowerCase());
+  }
+
+  _startBusy() {
+    const c = this._cfg;
+    if (!this._ink) return;
+    const cols = Array.isArray(c.busy_colors) && c.busy_colors.length
+      ? c.busy_colors
+      : [this._restColor()];
+    const every = Number(c.busy_interval) || GLYPH_BUSY_INTERVAL;
+    const minSteps =
+      c.busy_min_steps == null ? GLYPH_BUSY_MIN_STEPS : Number(c.busy_min_steps);
+    const limit = Number(c.busy_timeout) || GLYPH_BUSY_TIMEOUT;
+    this._stopBusy();
+    this._busy = true;
+    let step = 0;
+    // A unit can only come BACK if it went away first. For the seconds
+    // between the press and the unit actually dropping off the network it
+    // is still answering, so "live" on its own would end the cycle a beat
+    // after it started - which is exactly what it did. The run therefore
+    // waits to SEE it go down, and only then treats live as "it's back".
+    let seenDown = false;
+    const tick = () => {
+      // paint first, so the very first frame acknowledges the press
+      this._col = cols[step % cols.length];
+      this._ink.style.background = this._col;
+      step += 1;
+      const live = this._isLive();
+      if (!live) seenDown = true;
+      if ((live && seenDown && step >= minSteps) || step * every >= limit) {
+        this._stopBusy();
+        return;
+      }
+      this._busyTimer = setTimeout(tick, every);
+    };
+    tick();
+  }
+
+  /* Always the way out of a busy run - both exits and an unmount come
+     through here, so the glyph can never be left stuck mid-cycle. */
+  _stopBusy() {
+    if (this._busyTimer) clearTimeout(this._busyTimer);
+    this._busyTimer = null;
+    this._busy = false;
+    this._col = null; // the cycle wrote colours behind _paint's back
+    this._paint();
+  }
+
+  disconnectedCallback() {
+    this._stopBusy();
   }
 
   _build() {
@@ -1130,6 +1261,18 @@ class Tide16Glyph extends HTMLElement {
     const s = c.icon_scale == null ? 0.8 : Number(c.icon_scale);
     const pct = (s * 100).toFixed(2);
     const btn = !!c.button;
+    // A tinted glyph is a masked DIV, not an <img> - see the doc block.
+    // `ink` is whichever of the two this instance ended up with, so the
+    // sizing and :active rules below stay written once.
+    const tint = !!(c.color_entity || c.color || c.busy_colors);
+    const ink = tint ? '.ink' : 'img';
+    const inkEl = tint ? '<div class="ink"></div>' : '<img>';
+    this._onStates = (Array.isArray(c.on_states) ? c.on_states : ['on']).map((v) =>
+      String(v).toLowerCase()
+    );
+    this._liveStates = (
+      Array.isArray(c.busy_live_states) ? c.busy_live_states : ['on']
+    ).map((v) => String(v).toLowerCase());
     root.innerHTML = `
       <style>
         :host {
@@ -1174,7 +1317,7 @@ class Tide16Glyph extends HTMLElement {
             0 -1px 0 rgba(255, 255, 255, 0.13),
             0 2px 3px rgba(0, 0, 0, 0.75);
         }
-        img {
+        ${ink} {
           display: block;
           width: ${pct}%;
           height: ${pct}%;
@@ -1189,22 +1332,48 @@ class Tide16Glyph extends HTMLElement {
             inset 0 6px 9px -2px rgba(0, 0, 0, 1),
             inset 0 0 0 1px rgba(0, 0, 0, 0.6);
         }
-        :host(:active) img { filter: brightness(0.75); transform: translateY(0.5px); }`
+        :host(:active) ${ink} { filter: brightness(0.75); transform: translateY(0.5px); }`
             : `
-        img { display: block; width: 100%; height: auto; }
-        :host(:active) img { filter: brightness(0.7); }`
+        /* A masked glyph has no intrinsic size to keep an aspect from, so
+           it fills the box and the BOX carries the art's aspect. An <img>
+           still sizes itself off the file, exactly as before. */
+        ${ink} { display: block; width: 100%; height: ${tint ? '100%' : 'auto'}; }
+        :host(:active) ${ink} { filter: brightness(0.7); }`
+        }
+        ${
+          tint
+            ? `
+        /* Both spellings: -webkit-mask is still the one some Chromium
+           builds honour on the shorthand. A contain fit matches the
+           object-fit an <img> would have used, so swapping to a mask does
+           not resize the art. The colour here is only the pre-paint
+           value - _paint owns it from the first hass tick. */
+        .ink {
+          -webkit-mask: url("${c.image}") center / contain no-repeat;
+          mask: url("${c.image}") center / contain no-repeat;
+          background: ${c.color || c.color_off || GLYPH_TINT_OFF};
+        }`
+            : ''
         }
       </style>
-      ${btn ? '<div class="btn"><img></div>' : '<img>'}`;
+      ${btn ? `<div class="btn">${inkEl}</div>` : inkEl}`;
+    this._ink = root.querySelector('.ink');
+    this._col = null;
     const img = root.querySelector('img');
-    img.src = c.image;
-    // alt, not the tooltip: the hover text belongs on the host, which is
-    // what the cursor actually lands on
-    img.alt = c.hint == null ? '' : String(c.hint);
+    if (img) {
+      img.src = c.image;
+      // alt, not the tooltip: the hover text belongs on the host, which is
+      // what the cursor actually lands on
+      img.alt = c.hint == null ? '' : String(c.hint);
+    }
     if (c.hint != null) this.title = String(c.hint);
     if (tappable) {
-      this.onclick = () => this._fire(c.tap);
+      this.onclick = () => {
+        this._fire(c.tap);
+        if (c.busy_colors) this._startBusy();
+      };
     }
+    this._paint();
   }
 
   _fire(tap) {
@@ -1233,9 +1402,11 @@ if (!customElements.get('tide16-glyph')) {
  * instead of eight hand-tuned left/top pairs that drift the moment the
  * card is rescaled.
  *
- * Each label is {at, text, tap?} where `at` is a clock hour (12, 1, 2,
- * 3, 6, 9, 10, 11). Hours map to angles the usual way - 12 is up, 3 is
- * right - and the label is pushed out along that ray by half its own
+ * Each label is {at, text, tap?} where `at` is a clock position (12, 1,
+ * 2, 3, 6, 9, 10, 11). Hours map to angles the usual way - 12 is up, 3
+ * is right - and a FRACTION is a fraction of an hour, so 4.5 is half
+ * past four: the 135-degree diagonal, which whole hours cannot reach.
+ * The label is then pushed out along that ray by half its own
  * box, so what ends up `gap` from the circle is the label's NEAREST
  * edge: bottom at 12, top at 6, left at 3, right at 9, and the
  * corresponding corner on the diagonals.
@@ -1440,6 +1611,12 @@ const READOUT_DEFAULTS = {
   row_gap: '0.10cqw',
   align: 'left',
   placeholder: '-',
+  // A value wider than its box scrolls rather than spilling across the plate.
+  // Needs a WIDTH on the element in the YAML - without one the box shrink-wraps
+  // the text and nothing can ever overflow it.
+  scroll: false,
+  scroll_speed: 14, // CSS px per second. The plate renders at about 0.67 CSS px
+  // per canvas px, so this is a slow walk, not a ticker.
   rows: [],
 };
 
@@ -1507,10 +1684,33 @@ class Tide16Readout extends HTMLElement {
           color: ${c.color};
         }
         .row + .row { padding-top: ${c.row_gap}; }
+        /* Scrolling rows. The row is the window and .txt is the thing that
+           moves, so the type never leaves the cell it belongs to. Held still at
+           each end for a share of the cycle - a name you cannot read the start
+           of is worse than one that does not move at all.
+           NOTE: no backticks in here - this is inside a template literal and
+           one would end the string. */
+        .row.scroll { overflow: hidden; }
+        .row.scroll .txt { display: inline-block; white-space: nowrap; }
+        .row.scrolling .txt {
+          animation: t16-scroll var(--t16-dur) ease-in-out infinite;
+        }
+        @keyframes t16-scroll {
+          0%, 15% { transform: translateX(0); }
+          50%, 65% { transform: translateX(calc(-1 * var(--t16-ov))); }
+          100% { transform: translateX(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .row.scrolling .txt { animation: none; }
+        }
       </style>
       <div class="block">
         ${c.title ? '<div class="title"></div>' : ''}
-        ${c.rows.map(() => '<div class="row"></div>').join('')}
+        ${c.rows
+          .map(() =>
+            c.scroll ? '<div class="row scroll"><span class="txt"></span></div>' : '<div class="row"></div>'
+          )
+          .join('')}
       </div>`;
 
     // textContent rather than interpolation, so a label or a value that
@@ -1535,15 +1735,63 @@ class Tide16Readout extends HTMLElement {
     }
     this._rowEls = [...root.querySelectorAll('.row')];
     this._paint();
+
+    // the plate scales with the window, so what fits changes with it
+    if (c.scroll && !this._ro && typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver(() => this._measure());
+      this._ro.observe(this);
+    }
   }
 
   _paint() {
     const c = this._cfg;
     if (!this._rowEls.length) return;
+    let changed = false;
     c.rows.forEach((r, i) => {
       const el = this._rowEls[i];
       if (!el) return;
-      el.textContent = [r.label, this._value(r)].filter(Boolean).join(' ');
+      const text = [r.label, this._value(r)].filter(Boolean).join(' ');
+      // .txt is the span that moves when the row scrolls; without scrolling the
+      // row itself holds the text, exactly as before
+      const target = c.scroll ? el.firstElementChild : el;
+      if (target.textContent === text) return;
+      target.textContent = text;
+      changed = true;
+    });
+    // hass ticks at 4 Hz while the meter is on screen, and measuring forces
+    // layout - so only remeasure when a value actually changed
+    if (c.scroll && changed) this._measure();
+  }
+
+  /* Does any row overflow its cell, and by how much? Sets the animation up per
+     row, since one block can hold a short line and a long one.
+
+     Deliberately measured rather than guessed from character counts: the panel
+     inherits the frontend's font, so the same string is a different width on a
+     different machine. */
+  _measure() {
+    const c = this._cfg;
+    if (this._raf) cancelAnimationFrame(this._raf);
+    // after layout, or scrollWidth is read against the previous text
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      this._rowEls.forEach((el) => {
+        const txt = el.firstElementChild;
+        if (!txt) return;
+        const over = txt.scrollWidth - el.clientWidth;
+        if (over > 0.5) {
+          // travel is 35% of the cycle each way, so the rest is the pause at
+          // either end and the speed stays what scroll_speed says
+          const dur = over / (Number(c.scroll_speed) * 0.35);
+          el.style.setProperty('--t16-ov', over + 'px');
+          el.style.setProperty('--t16-dur', dur.toFixed(2) + 's');
+          el.classList.add('scrolling');
+        } else {
+          el.classList.remove('scrolling');
+          el.style.removeProperty('--t16-ov');
+          el.style.removeProperty('--t16-dur');
+        }
+      });
     });
   }
 
@@ -1595,7 +1843,7 @@ if (!customElements.get('tide16-readout')) {
  * The whole cell is the hit target, not just the dot - a 13px circle is
  * a mean thing to ask anyone to hit, and the label is right there.
  *
- * Each item is {text, tap?, hint?} with the same {action, data} shape the
+ * Each item is {text, id?, tap?, hint?} with the same {action, data} shape the
  * rest of the card uses. A tappable cell gets hover text - "Select
  * source: Roku" unless `hint` says otherwise. Sources are selected through
  * media_player.select_source rather than the button.tide16_source_*
@@ -1650,6 +1898,18 @@ const INPUT_DEFAULTS = {
   // grow the circle out of register with the rest of the column.
   active_background: null,
   active_border: null,
+  // Which inputs are actually CONFIGURED, read live off the device. The map is
+  // {id: {name, hidden}} exactly as the Tide16's get_settings -> sources gives
+  // it (see scripts/tide16_sources.py, surfaced as a command_line sensor).
+  // Items opt in by carrying an `id`. A hidden input is still drawn - the panel
+  // has twelve inputs and always will - but pushed back and made inert.
+  source_entity: null,
+  source_attribute: 'sources',
+  // pushed well back rather than merely dimmed: the point is that the three
+  // configured inputs are what the eye lands on first
+  disabled_color: '#5E5F5F',
+  disabled_background: '#1F1F1F',
+  disabled_border: '1px solid #3A3A3A',
   items: [],
 };
 
@@ -1670,6 +1930,66 @@ class Tide16Inputs extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    this._paintSources();
+    this._paintActive();
+  }
+
+  /* Which inputs are configured? The device's own hidden flag decides, so the
+     panel follows whatever is set in the Tide16's UI without a card edit.
+     Matching is by `id`, which also keeps every label in step with whatever the
+     input has been RENAMED to - the YAML `text` is only the fallback for when
+     the map is missing.
+
+     Fail-open on purpose: an absent or empty map leaves every cell selectable.
+     The map arrives from a polled command_line sensor, and a sensor that dies
+     must not be able to render the whole input row inert. */
+  _paintSources() {
+    const c = this._cfg;
+    if (!this._hass || !c.source_entity || !this._cells) return;
+    const st = this._hass.states[c.source_entity];
+    const map = st && c.source_attribute ? st.attributes[c.source_attribute] : null;
+    if (!map || typeof map !== 'object' || !Object.keys(map).length) return;
+
+    // hass ticks at 4 Hz while the meter is on screen and this table changes
+    // about never, so repaint only when it actually differs
+    const stamp = JSON.stringify(map);
+    if (stamp === this._sourceStamp) return;
+    this._sourceStamp = stamp;
+
+    this._cells.forEach((cell) => {
+      const it = cell._item;
+      const entry = it && it.id != null ? map[it.id] : null;
+      if (!entry) return;
+
+      if (entry.name) {
+        cell._lbl.textContent = String(entry.name);
+        // select_source takes the DISPLAY name, so a renamed input needs the
+        // new name in the payload or the tap quietly selects nothing. Held on
+        // the CELL and merged in at fire time - Lovelace deep-freezes the
+        // config it hands over, so writing it.tap.data.source throws
+        // "Cannot assign to read only property", and a throw in this setter
+        // takes the whole card's render down with it (card-mod stops applying,
+        // and the plate loses its scale/outline box).
+        cell._source = String(entry.name);
+        if (it.hint == null && it.tap && it.tap.action) {
+          cell.title = `Select source: ${entry.name}`;
+        }
+      }
+
+      const hidden = entry.hidden === true;
+      cell.classList.toggle('unconfigured', hidden);
+      if (hidden) {
+        // no pointer, no hover text, no press feedback - an inert cell must not
+        // advertise itself as tappable
+        delete cell.dataset.tap;
+        cell.removeAttribute('title');
+      } else if (it.tap && it.tap.action) {
+        cell.dataset.tap = '';
+      }
+    });
+
+    // a rename can move which label is the live one
+    this._active = undefined;
     this._paintActive();
   }
 
@@ -1759,6 +2079,18 @@ class Tide16Inputs extends HTMLElement {
           text-underline-offset: 0.22em;
           text-decoration-thickness: from-font;
         }
+        /* an input the device has hidden: still drawn, but pushed back so the
+           configured ones stand out, and inert. Declared after .cell.on so a
+           hidden input could never be painted as the live one. */
+        .cell.unconfigured { cursor: default; }
+        .cell.unconfigured .lbl {
+          color: ${c.disabled_color};
+          text-decoration: none;
+        }
+        .cell.unconfigured .dot {
+          background: ${c.disabled_background};
+          border: ${c.disabled_border};
+        }
       </style>
       <div class="grid"></div>`;
 
@@ -1776,9 +2108,18 @@ class Tide16Inputs extends HTMLElement {
       lbl.textContent = it.text == null ? '' : String(it.text);
       cell.appendChild(dot);
       cell.appendChild(lbl);
+      // kept for _paintSources: it relabels cells and flips them inert
+      cell._lbl = lbl;
+      cell._item = it;
       if (it.tap && it.tap.action) {
         cell.dataset.tap = '';
-        cell.addEventListener('click', () => this._fire(it.tap));
+        // guarded at fire time rather than at build time - `unconfigured` is
+        // painted from live device state and can flip either way without a
+        // rebuild, and a removed data-tap only changes the cursor
+        cell.addEventListener('click', () => {
+          if (cell.classList.contains('unconfigured')) return;
+          this._fire(it.tap, cell._source);
+        });
         // hover text says what the click does. Only the tappable cells
         // get one - a tooltip on something inert is a lie.
         cell.title = it.hint == null ? `Select source: ${lbl.textContent}` : String(it.hint);
@@ -1789,14 +2130,20 @@ class Tide16Inputs extends HTMLElement {
       grid.appendChild(cell);
     });
     this._active = undefined;
+    this._sourceStamp = undefined;
     this._paintActive();
+    this._paintSources();
   }
 
-  _fire(tap) {
+  /* `source` is the live name for this cell, if the device reported one.
+     Merged into a COPY of the config's data - the config itself is frozen. */
+  _fire(tap, source) {
     if (!this._hass) return;
     const [domain, service] = String(tap.action).split('.');
     if (!domain || !service) return;
-    this._hass.callService(domain, service, tap.data || {});
+    const data = { ...(tap.data || {}) };
+    if (source && 'source' in data) data.source = source;
+    this._hass.callService(domain, service, data);
   }
 
   getCardSize() {
@@ -1812,7 +2159,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.8';
+const TIDE16_VERSION = '1.1.12';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
