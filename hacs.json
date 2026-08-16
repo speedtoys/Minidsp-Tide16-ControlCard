@@ -1,6 +1,6 @@
 {
-  "name": "Tide16 Bars",
+  "name": "miniDSP Tide16",
   "render_readme": true,
-  "filename": "tide16-bars.js",
-  "homeassistant": "2024.1.0"
+  "homeassistant": "2024.7.0",
+  "hide_default_branch": true
 }

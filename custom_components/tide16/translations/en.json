@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "miniDSP Tide16",
+        "description": "The processor answers on port 5555 while it is awake. If setup fails, check it is not in standby.",
+        "data": {
+          "host": "Host",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No answer from that address. The Tide16 leaves the network in standby, so wake it and try again."
+    },
+    "abort": {
+      "already_configured": "This Tide16 is already set up."
+    }
+  }
+}

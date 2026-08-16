@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.0.0 - 2026-08-15
+
+**This repo is an integration now.**  It speaks the Tide16's WebSocket API
+itself, and everything that used to be assembled by hand around the card is
+gone: the third-party integration and the patch over it, three python scripts
+run as `command_line` sensors, a 194-line package of template sensors and
+scripts, five stanzas of `configuration.yaml`, the `www/` copy of the plate art
+and the Lovelace resource with its hand-bumped cache-buster.
+
+Install is now: add the repo to HACS as an **Integration**, add the device from
+Settings > Devices & services, paste the view.  Nothing else.
+
+**The API layer has no Home Assistant in it.**  `custom_components/tide16/api/`
+is a plain async WebSocket client that runs from a terminal -
+`python3 -m api 192.168.1.212`, run from inside that folder, prints the unit's
+live state - which is what makes the protocol testable without a Home Assistant at
+all.  Above it sits a coordinator, and above that the entities.
+
+The protocol was captured from the hardware rather than ported: requests are
+`{"endpoint": ...}`, replies come back as `{"req", "status", "data"}` with no
+request id (so correlation is by endpoint name), and eleven notifications are
+pushed unasked.  Setters mostly do not reply at all - the unit confirms them by
+pushing instead - so anything that waits for a setter's reply waits forever.
+
+**Metering stopped being entity state.**  Sixteen channel levels four times a
+second was a `recorder` problem that every user had to solve by hand with an
+exclusion in their own configuration.yaml, plus a service to raise the poll rate
+and a keepalive from the card to hold it there.  The card now subscribes to
+`tide16/levels/subscribe`; frames go straight from the coordinator to the
+browser, the 4 Hz cadence runs only while at least one subscriber exists, and
+closing the tab is the unsubscribe.  Measured on the live unit: 4.3 Hz to the
+browser, and nothing in the database.
+
+**Everything the panel prints is a real entity.**  The split volume, the kHz
+sample rate, the Atmos flag and the held channel legend were `template:` blocks;
+the Dolby profile, the input table and the firmware versions were python scripts
+shelling out to the device.  All seven come from the coordinator now, and the
+Dolby profile is a proper `select` entity rather than a sensor plus a
+`shell_command`.
+
+**Fixed: "Dolby Digital Plus without Dolby Atmos" lit the Atmos badge.**  The
+old template asked whether "atmos" appeared anywhere in the stream description,
+which is true of the string that exists to tell you there is none.  The
+negations are stripped before the test now.
+
+Entity ids are unchanged, so recorder history carries across the swap - but the
+old registry rows have to be removed first or Home Assistant hands the new
+entities `_2` suffixes.  See the upgrade notes in the README.
+
 ## v1.1.12 - 2026-08-15
 
 Four changes to the panel's controls, and one bug that only a real reboot

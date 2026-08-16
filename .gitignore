@@ -16,3 +16,7 @@ quotes.txt
 # The packer explains what the idle blob contains, which defeats the point
 # of packing it. Kept local; the blob in dist/ is all the card needs.
 tools/
+
+# Python bytecode from the integration
+__pycache__/
+*.pyc

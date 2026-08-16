@@ -15,96 +15,51 @@ assigned and the legend names them; yours will show your own layout.*
 
 | | |
 |---|---|
-| `dist/tide16-bars.js` | Seven `picture-elements` **elements**, not a standalone card - each draws one thing and nothing else, so the artwork underneath shows through |
-| `assets/` | The front-panel plate, the format and Dirac marks, and the power / reboot / Bluetooth glyphs |
+| `custom_components/tide16/` | The integration: a WebSocket client for the Tide16, every entity the panel needs, and the card itself |
+| `custom_components/tide16/api/` | The protocol on its own, with no Home Assistant imports - runnable from a terminal |
+| `custom_components/tide16/frontend/` | Seven `picture-elements` **elements**, not a standalone card, plus the plate and glyphs.  Served by the integration at `/tide16_static/` |
 | `lovelace/tide16-panel.yaml` | The complete view: meter, source selector, scenes, volume ring, every live readout |
-| `packages/tide16_panel.yaml` | The template sensors the panel prints (split volume, sample rate, Atmos flag, the latched channel legend) and the scripts its knob, standby glyph and Dolby column call |
-| `scripts/tide16_dolby.py` | Reads and sets the Dolby profile on the device's own websocket, which the integration does not speak.  Only needed for the profile column |
-| `integration/` | A diff against the integration this depends on - **required**, see below |
-
-## You need the original integration first
-
-The card is the product here; it is not an integration and not a fork of
-one.  It sits on top of
-[**GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration**](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
-(MIT) - all the device work, the WebSocket protocol, the config flow and
-most of the entities this panel displays are his.  Install that first;
-nothing here works without it.
-
-Two gaps have to be closed first, and
-[`integration/tide16-metering.patch`](integration/) closes both.  It
-deletes nothing and rewrites two existing lines:
-
-- **Metering.** His integration receives all 16 channel levels from the
-  device but collapses them to a single peak and discards the rest, and
-  it polls metering every 5 s - which reads as a broken meter rather
-  than a slow one.  The patch keeps the full array and adds an
-  on-demand fast cadence the card asks for while it is on screen.
-- **Scenes.** The device stores four scene snapshots and can recall
-  them, but nothing in the integration reaches that endpoint, so the
-  four scene buttons on the plate would have nothing to call.  The patch
-  adds `button.tide16_scene_{red,green,yellow,blue}`.
-
-Not a fork, and deliberately not a copy of his files: you install his
-integration from his repo, then apply this on top.  See
-[`integration/README.md`](integration/README.md).
-
-It's offered upstream; if it lands there, that directory goes away and
-the card just requires a newer version.
 
 ## Install
 
-**1. The integration.** Install
-[Gael's](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
-(v0.28.0) and add it under Settings > Devices & services.  Then apply
-[`integration/tide16-metering.patch`](integration/) and restart.
+**One thing, from HACS.**
 
-**2. The card.** HACS > ⋮ > Custom repositories >
-`https://github.com/speedtoys/Minidsp-Tide16-ControlCard`, type
-**Dashboard**.  Download it.
+1. HACS > ⋮ > Custom repositories > `https://github.com/speedtoys/Minidsp-Tide16-ControlCard`, type **Integration**.  Download it and restart.
+2. Settings > Devices & services > Add integration > **miniDSP Tide16**.  Give it the unit's address.
+3. Paste [`lovelace/tide16-panel.yaml`](lovelace/) into a dashboard as a panel-mode view.
 
-Manually: copy `dist/tide16-bars.js` to `config/www/tide16/` and add
-`/local/tide16/tide16-bars.js` as a **JavaScript module** resource under
-Settings > Dashboards > ⋮ > Resources.  Put a `?v=` on the end and bump
-it whenever you update the file - the frontend caches hard.
+That's it.  The card and the plate art are registered by the integration,
+so there is no Lovelace resource to add, nothing to copy into `www/`, and
+no `?v=` cache-buster to bump - the module URL carries the integration's
+own version.
 
-**3. The artwork.** Copy `assets/*` into `config/www/tide16/`.
+The view uses [card-mod](https://github.com/thomasloven/lovelace-card-mod)
+for the `scale()` wrapper that fits the plate to the page.  Delete that
+`card_mod` block if you'd rather not have the dependency; the panel just
+renders full width.
 
-**4. The helper sensors.** Copy `packages/tide16_panel.yaml` into
-`config/packages/` (which needs
-`homeassistant: packages: !include_dir_named packages` in
-`configuration.yaml`), and add the recorder exclusion from
-[`integration/README.md`](integration/README.md).  Restart.
+### Upgrading from v1.x
 
-**5. The Dolby profile column** (optional - skip it and delete that
-element from the view).  Copy `scripts/tide16_dolby.py` into
-`config/scripts/`, edit the `HOST` at the top to your Tide16's address,
-and add to `configuration.yaml`:
+v1 was a dashboard card that needed
+[@GaelFrance's integration](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
+plus a patch, three python scripts, a package of template sensors and
+five stanzas of `configuration.yaml`.  v2 replaced all of it.
 
-```yaml
-shell_command:
-  tide16_set_dolby_profile: >-
-    python3 /config/scripts/tide16_dolby.py set {{ profile }}
+1. Remove the old HACS entry (it was type **Dashboard**) and add the repo again as an **Integration**.
+2. Delete the old config entry for `minidsp_tide16`, then its `custom_components/minidsp_tide16/` folder.
+3. Delete `packages/tide16_panel.yaml`, `scripts/tide16_*.py`, the `command_line` and `shell_command` stanzas, the `recorder:` exclusion for `sensor.tide16_channel_levels`, and the `/local/tide16/` resource row.
+4. Add this integration and take the new view.
 
-command_line:
-  - sensor:
-      name: Tide16 Dolby Profile Live
-      unique_id: tide16_dolby_profile_live
-      command: "python3 /config/scripts/tide16_dolby.py read"
-      scan_interval: 60
-      command_timeout: 15
-```
+Do the removals **before** adding this integration, or Home Assistant will
+hand the new entities `_2` suffixes because the old registry rows still
+hold the names.  Entity ids are otherwise unchanged - `sensor.tide16_status`,
+`number.tide16_volume` and the rest are the same names, so recorder history
+carries straight over.
 
-This exists because the integration has no endpoint for the profile
-while the device does - the script talks to the unit's own websocket.  It
-runs inside the Home Assistant container, so it uses aiohttp rather than
-`websockets`, which is not installed there.
-
-**6. The view.** Use [`lovelace/tide16-panel.yaml`](lovelace/).  It also
-needs [card-mod](https://github.com/thomasloven/lovelace-card-mod) from
-HACS for the `scale()` wrapper that fits the plate to the page; delete
-that `card_mod` block if you'd rather not have the dependency, and the
-panel just renders full width.
+The one entity that does not come back is `sensor.tide16_channel_levels`.
+Sixteen floats four times a second was never state worth storing; the meter
+subscribes to them over the websocket now, which is also why the recorder
+exclusion is gone.
 
 ## The elements
 
@@ -113,7 +68,7 @@ inside a `picture-elements` card, each framed by its own box.
 
 ```yaml
 type: picture-elements
-image: /local/tide16/plate-v2.png
+image: /tide16_static/plate-v2.png
 elements:
   - type: custom:tide16-bars
     style:
@@ -142,14 +97,11 @@ they cannot drift out of register with them.
 
 | Option | Default | |
 |---|---|---|
-| `entity` | `sensor.tide16_channel_levels` | Source entity |
-| `attribute` | `channels` | Attribute holding the array of dB values |
+| `subscribe` | `tide16/levels/subscribe` | The integration's websocket feed the bars read |
 | `ceiling_entity` | `number.tide16_volume` | Entity whose value is full scale |
 | `range_db` | `40` | Height of the window, in dB below that ceiling |
 | `ceiling_db` / `floor_db` | `0` / `-60` | Fallback pair, used only when `ceiling_entity` is unset or unavailable |
-| `keepalive_service` | `minidsp_tide16.request_fast_metering` | `null` to disable |
-| `keepalive_ms` | `1000` | Keepalive period |
-| `transition_ms` | `260` | Bar animation, ≈ the 250 ms poll |
+| `transition_ms` | `260` | Bar animation, ≈ the 250 ms push |
 | `numbers` | `true` | Draw the 1-16 labels |
 | `numbers_size` / `numbers_gap` / `numbers_color` / `numbers_weight` | `0.748cqw` / `0.236cqw` / `#FFFFFF` / `500` | |
 
@@ -365,12 +317,18 @@ tunes by eye.  The option names are chosen so that swap is a default
 change rather than a breaking one.
 
 **It only polls fast while you're looking.** While the element is on
-screen it calls `request_fast_metering` every second, raising the rate to
-4 Hz on a 3-second lapsing grant.  Off screen it simply stops calling and
-the grant expires, so nothing can leave the device being polled hard at
-nobody.  Both an `IntersectionObserver` (view switched, scrolled away)
-and `visibilitychange` (tab hidden, laptop asleep) gate it - neither
-alone catches both cases.
+screen it subscribes to the integration's levels feed, and the
+coordinator raises the device poll to 4 Hz only while at least one
+subscriber exists.  Off screen it unsubscribes and the rate drops back,
+so nothing can leave the device being polled hard at nobody - and closing
+the tab is the unsubscribe, with no timer to lapse and no state that can
+get stuck fast.  Both an `IntersectionObserver` (view switched, scrolled
+away) and `visibilitychange` (tab hidden, laptop asleep) gate it -
+neither alone catches both cases.
+
+The levels are never entity state.  Sixteen floats four times a second
+would be a `recorder` problem and a history nobody wants; the frames go
+straight from the coordinator to the subscribed browsers.
 
 ## Reading the meter
 
@@ -411,35 +369,36 @@ playing at all.  Only the metering moving proves playback.
 
 ## Credits and licensing
 
-The card, the Lovelace view, the template sensors, the plate edits and
-the additions in `integration/tide16-metering.patch` are original work,
-MIT licensed.
+The integration, the card, the Lovelace view and the plate edits are
+original work, MIT licensed.  The WebSocket client was written against
+miniDSP's published API and a recorded session with the hardware; no code
+from any other implementation is in it.
 
-None of it runs on its own.  The integration it extends is
-[@GaelFrance's](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration),
-also MIT, and is not redistributed here - install it from his repo.  The
-patch necessarily quotes a few lines of his as diff context, under that
-same license.
+Through v1.x this repo was a card that sat on top of
+[@GaelFrance's integration](https://github.com/GaelFrance/MiniDSP-Tide-16---HomeAssitant-Integration)
+(MIT), with a patch for the metering and scene endpoints it did not
+reach.  That is where this panel started, and the debt is worth stating
+plainly even though v2 no longer depends on it.
 
 ### Image assets - what the MIT grant does NOT cover
 
-**The MIT license above applies to the source code only: `dist/`,
-`lovelace/`, `packages/` and `integration/`.  It does not grant any
+**The MIT license above applies to the source code only:
+`custom_components/tide16/**/*.py`, the card JS, and `lovelace/`.  It does not grant any
 rights in the image assets.**  Every binary shipped in this repo is
 listed below.  None of them are original artwork, so treat the whole of
-`assets/` and `docs/` as excluded unless you have confirmed otherwise
+`custom_components/tide16/frontend/` and `docs/` as excluded unless you have confirmed otherwise
 for the file you want.
 
 | File | What it is | Status |
 |---|---|---|
-| `assets/plate-v2.png` | Front-panel artwork of the miniDSP Tide16, redrawn and stripped of its baked-in readings so live values can be painted back on | Depicts a miniDSP product.  **Excluded** |
-| `assets/plate.png` | The original photographic plate, superseded by `plate-v2.png` and kept only for history | Photograph of a miniDSP product.  **Excluded** |
-| `assets/dolby.png` | The Dolby double-D, used as the word "Dolby" in the profile heading.  Supplied by the repo owner; keyed off its background and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
-| `assets/dolby-atmos.png` | The Dolby Atmos lockup shown in the LCD when Atmos is decoding | Third-party mark, provenance unconfirmed.  **Excluded** |
-| `assets/dirac.png`, `assets/dirac-a.png` | The Dirac Live mark, lit when Dirac is engaged | Third-party mark, provenance unconfirmed.  **Excluded** |
-| `assets/bt.png` | The Bluetooth mark on the pairing control.  Supplied by the repo owner, background-stripped and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
-| `assets/reboot.png` | The reboot glyph.  Supplied by the repo owner as line art, recoloured and cropped here | Third-party icon art, provenance unconfirmed.  **Excluded** |
-| `assets/power.png` | The standby glyph, recoloured to match the reboot one | Provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/plate-v2.png` | Front-panel artwork of the miniDSP Tide16, redrawn and stripped of its baked-in readings so live values can be painted back on | Depicts a miniDSP product.  **Excluded** |
+| `custom_components/tide16/frontend/plate.png` | The original photographic plate, superseded by `plate-v2.png` and kept only for history | Photograph of a miniDSP product.  **Excluded** |
+| `custom_components/tide16/frontend/dolby.png` | The Dolby double-D, used as the word "Dolby" in the profile heading.  Supplied by the repo owner; keyed off its background and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/dolby-atmos.png` | The Dolby Atmos lockup shown in the LCD when Atmos is decoding | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/dirac.png`, `custom_components/tide16/frontend/dirac-a.png` | The Dirac Live mark, lit when Dirac is engaged | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/bt.png` | The Bluetooth mark on the pairing control.  Supplied by the repo owner, background-stripped and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/reboot.png` | The reboot glyph.  Supplied by the repo owner as line art, recoloured and cropped here | Third-party icon art, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/power.png` | The standby glyph, recoloured to match the reboot one | Provenance unconfirmed.  **Excluded** |
 | `docs/screenshot.png` | A photograph-equivalent render of the running card | Contains every mark above.  **Excluded** |
 
 Recolouring, cropping and background-stripping are edits, not authorship:

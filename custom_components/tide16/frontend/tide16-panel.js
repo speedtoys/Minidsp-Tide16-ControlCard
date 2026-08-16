@@ -23,8 +23,8 @@
  *
  * 2. Metering is not pushed by the device and is polled at 5s when idle,
  *    which would make this animate like a slideshow. While this element
- *    is actually on screen it calls minidsp_tide16.request_fast_metering
- *    on a keepalive to raise the poll rate to 4/sec, and simply stops
+ *    is actually on screen it subscribes to the integration's levels feed,
+ *    which is what raises the poll rate to 4/sec, and simply stops
  *    when it goes off screen - the grant lapses on its own, so nothing
  *    can leave the device being polled fast at nobody. Both an
  *    IntersectionObserver (view switched / scrolled away) and
@@ -230,8 +230,13 @@ function idleStrings() {
 }
 
 const DEFAULTS = {
-  entity: 'sensor.tide16_channel_levels',
-  attribute: 'channels',
+  // Levels arrive over the integration's own websocket command, not as entity
+  // state. Sixteen floats four times a second is a live meter's worth of data
+  // and a database's worth of trouble: as an attribute it needed a recorder
+  // exclusion in the user's configuration.yaml, a service to raise the poll
+  // rate and a keepalive to hold it there. A subscription needs none of them,
+  // and closing the tab IS the unsubscribe.
+  subscribe: 'tide16/levels/subscribe',
 
   // Output level tracks the master volume: with real content at -42 dB the
   // loudest channel peaked at -42.9, i.e. full scale IS the volume setting.
@@ -250,8 +255,7 @@ const DEFAULTS = {
   floor_db: -60, // used only when ceiling_entity is unset/unavailable
   ceiling_db: 0,
 
-  keepalive_ms: 1000, // must stay well under FAST_METERING_HOLD (3s)
-  transition_ms: 260, // ~= the 250ms poll, so bars glide instead of stepping
+  transition_ms: 260, // ~= the 250ms push, so bars glide instead of stepping
 
   // The 1-16 channel numbers. base-T16.pxd does NOT bake these in the way
   // the old photo plate did, so the meter draws its own - which is
@@ -281,9 +285,12 @@ class Tide16Bars extends HTMLElement {
     this._bars = [];
     this._hass = null;
     this._onScreen = false;
-    this._keepaliveTimer = null;
     this._io = null;
-    this._onVisibility = () => this._syncKeepalive();
+    this._live = null; // the last frame off the socket
+    this._pending = false; // a subscribe is in flight
+    this._unsub = null; // resolved unsubscribe, once the socket answers
+    this._sub = 0; // generation, so a late subscribe can't outlive its request
+    this._onVisibility = () => this._syncSubscription();
   }
 
   setConfig(config) {
@@ -295,7 +302,11 @@ class Tide16Bars extends HTMLElement {
   }
 
   set hass(hass) {
+    const first = !this._hass;
     this._hass = hass;
+    // the connection only exists once hass does, so the first assignment is
+    // the earliest moment a subscription can be opened
+    if (first) this._syncSubscription();
     this._render();
   }
 
@@ -305,13 +316,13 @@ class Tide16Bars extends HTMLElement {
     this._io = new IntersectionObserver(
       (entries) => {
         this._onScreen = entries.some((e) => e.isIntersecting);
-        this._syncKeepalive();
+        this._syncSubscription();
       },
       { threshold: 0.01 }
     );
     this._io.observe(this);
     document.addEventListener('visibilitychange', this._onVisibility);
-    this._syncKeepalive();
+    this._syncSubscription();
   }
 
   disconnectedCallback() {
@@ -320,18 +331,18 @@ class Tide16Bars extends HTMLElement {
       this._io = null;
     }
     document.removeEventListener('visibilitychange', this._onVisibility);
-    this._stopKeepalive();
+    this._unsubscribe();
     // A running animation on a detached element keeps a live timer and a
     // compositor layer for a view nobody is looking at.
     this._stopIdle();
   }
 
-  /* -- fast-metering keepalive ------------------------------------- */
+  /* -- metering subscription ---------------------------------------- */
 
-  _syncKeepalive() {
+  _syncSubscription() {
     const wanted = this._onScreen && document.visibilityState === 'visible';
-    if (wanted) this._startKeepalive();
-    else this._stopKeepalive();
+    if (wanted) this._subscribe();
+    else this._unsubscribe();
     // Same gate as the metering: off screen or tab hidden, nothing runs.
     // Without this the scroller animates forever behind another view.
     //
@@ -345,24 +356,48 @@ class Tide16Bars extends HTMLElement {
     else this._stopIdle();
   }
 
-  _startKeepalive() {
-    if (this._keepaliveTimer !== null) return;
-    this._ping(); // don't wait a full period for the first frame
-    this._keepaliveTimer = setInterval(() => this._ping(), this._cfg.keepalive_ms);
+  _subscribe() {
+    if (this._unsub || this._pending || !this._hass || !this._hass.connection) return;
+    const generation = ++this._sub;
+    this._pending = true;
+    this._hass.connection
+      .subscribeMessage(
+        (frame) => {
+          if (generation !== this._sub) return;
+          this._live = Array.isArray(frame && frame.levels) ? frame.levels : null;
+          this._render();
+        },
+        { type: this._cfg.subscribe }
+      )
+      .then((off) => {
+        this._pending = false;
+        // Went off screen while the socket was still answering: honour the
+        // newer intent rather than leaving a subscription nobody wants.
+        if (generation !== this._sub) {
+          off();
+          return;
+        }
+        this._unsub = off;
+      })
+      .catch(() => {
+        this._pending = false;
+        // No integration, or an older one without the command: the meter
+        // simply stays empty, which is what it does with no signal anyway.
+        this._live = null;
+      });
   }
 
-  _stopKeepalive() {
-    if (this._keepaliveTimer === null) return;
-    clearInterval(this._keepaliveTimer);
-    this._keepaliveTimer = null;
-    // Deliberately no "stop" call - the grant is deadline-based and
-    // lapses by itself, which is what makes it robust to this element
-    // simply vanishing.
-  }
-
-  _ping() {
-    if (!this._hass) return;
-    this._hass.callService('minidsp_tide16', 'request_fast_metering', {});
+  _unsubscribe() {
+    this._sub += 1; // invalidates any subscribe still in flight
+    this._live = null;
+    if (!this._unsub) return;
+    const off = this._unsub;
+    this._unsub = null;
+    try {
+      off();
+    } catch (err) {
+      /* the socket may already be gone; nothing to release */
+    }
   }
 
   /* -- rendering ---------------------------------------------------- */
@@ -589,11 +624,7 @@ class Tide16Bars extends HTMLElement {
   }
 
   _levels() {
-    if (!this._hass) return null;
-    const st = this._hass.states[this._cfg.entity];
-    if (!st) return null;
-    const raw = st.attributes ? st.attributes[this._cfg.attribute] : null;
-    return Array.isArray(raw) ? raw : null;
+    return Array.isArray(this._live) ? this._live : null;
   }
 
   _scale() {
@@ -2159,7 +2190,7 @@ if (!customElements.get('tide16-inputs')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '1.1.12';
+const TIDE16_VERSION = '2.0.0';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
