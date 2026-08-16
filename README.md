@@ -138,6 +138,13 @@ centres elements on their `left`/`top` by default
 (`translate(-50%, -50%)`); without the override every element sits half a
 box up and to the left of where you put it.
 
+**The panel follows the hardware.**  As of v2.4.0 the layout is anchored to
+a photograph of a running unit rather than to a design mock: there is no
+"Program" or "Listening" cell, the meter runs the full width of the screen,
+and the bottom strip is `ready` and a decoder badge on the left with an
+In / Out / Preset table on the right.  `docs/panel-layout.annotated.yaml`
+carries the measurements and the reasoning.
+
 **The box is the geometry.** Sizes inside each element are in `cqw` -
 percent of the card's width - so the whole panel scales together at any
 display size.  On the bundled 1990x400 plate, 1 canvas px ≈ 0.0503 cqw.
@@ -465,6 +472,9 @@ have confirmed otherwise for the file you want.
 
 | File | What it is | Status |
 |---|---|---|
+| `custom_components/tide16/frontend/plate-v3.png` | The front-panel artwork as the hardware actually draws it - `plate-v2.png` with the "Program" and "Listening" labels painted out, since the shipping firmware shows neither | Depicts a miniDSP product.  **Excluded** |
+| `custom_components/tide16/frontend/badge-dolby-audio.png`, `…/badge-dolby-atmos.png`, `…/badge-dtsx.png` | The decoder lockups shown along the bottom strip, keyed to white on transparency | Third-party marks, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/dirac-white.png` | The circled Dirac mark, in the white the hardware uses | Third-party mark, provenance unconfirmed.  **Excluded** |
 | `custom_components/tide16/frontend/plate-v2.png` | Front-panel artwork of the miniDSP Tide16, redrawn and stripped of its baked-in readings so live values can be painted back on | Depicts a miniDSP product.  **Excluded** |
 | `custom_components/tide16/frontend/plate.png` | The original photographic plate, superseded by `plate-v2.png` and kept only for history | Photograph of a miniDSP product.  **Excluded** |
 | `custom_components/tide16/frontend/dolby.png` | The Dolby double-D, used as the word "Dolby" in the profile heading.  Supplied by the repo owner; keyed off its background and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |

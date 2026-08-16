@@ -2395,14 +2395,14 @@ if (!customElements.get('tide16-inputs')) {
 
 const PANEL_LAYOUT = {
     "type": "picture-elements",
-    "image": "/tide16_static/plate-v2.png",
+    "image": "/tide16_static/plate-v3.png",
     "elements": [
       {
         "type": "custom:tide16-bars",
         "style": {
           "left": "17.739%",
           "top": "21.500%",
-          "width": "15.628%",
+          "width": "22.261%",
           "height": "29.250%",
           "transform": "translate(0, 0)",
           "pointer-events": "none"
@@ -2573,7 +2573,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "size": "3.176cqw",
+        "size": "3.850cqw",
         "color": "#E7E8E8",
         "row_gap": "0",
         "align": "right",
@@ -2586,13 +2586,13 @@ const PANEL_LAYOUT = {
         "style": {
           "right": "86.231%",
           "left": "unset",
-          "top": "24.189%",
+          "top": "21.660%",
           "transform": "translate(0, 0)"
         }
       },
       {
         "type": "custom:tide16-readout",
-        "size": "1.673cqw",
+        "size": "2.028cqw",
         "color": "#DFE0E0",
         "row_gap": "0",
         "rows": [
@@ -2604,14 +2604,14 @@ const PANEL_LAYOUT = {
         ],
         "style": {
           "left": "14.070%",
-          "top": "30.259%",
+          "top": "28.885%",
           "transform": "translate(0, 0)"
         }
       },
       {
         "type": "custom:tide16-readout",
         "size": "1.141cqw",
-        "color": "#B7B8B8",
+        "color": "#E7E8E8",
         "row_gap": "0",
         "rows": [
           {
@@ -2621,22 +2621,6 @@ const PANEL_LAYOUT = {
         "style": {
           "left": "6.734%",
           "top": "49.929%",
-          "transform": "translate(0, 0)"
-        }
-      },
-      {
-        "type": "custom:tide16-readout",
-        "size": "1.216cqw",
-        "color": "#BFC0C0",
-        "row_gap": "0",
-        "rows": [
-          {
-            "entity": "sensor.tide16_speaker_config"
-          }
-        ],
-        "style": {
-          "left": "25.879%",
-          "top": "64.723%",
           "transform": "translate(0, 0)"
         }
       },
@@ -2669,7 +2653,7 @@ const PANEL_LAYOUT = {
       {
         "type": "custom:tide16-readout",
         "size": "0.724cqw",
-        "color": "#332050",
+        "color": "#A96BF5",
         "row_gap": "0",
         "rows": [
           {
@@ -2677,154 +2661,10 @@ const PANEL_LAYOUT = {
           }
         ],
         "style": {
-          "left": "18.010%",
-          "top": "60.320%",
+          "left": "6.734%",
+          "top": "58.950%",
           "transform": "translate(0, 0)"
         }
-      },
-      {
-        "type": "custom:tide16-readout",
-        "size": "1.075cqw",
-        "color": "#BFC0C0",
-        "row_gap": "0",
-        "rows": [
-          {
-            "entity": "sensor.tide16_sample_rate_khz"
-          }
-        ],
-        "style": {
-          "left": "25.879%",
-          "top": "71.431%",
-          "transform": "translate(0, 0)"
-        }
-      },
-      {
-        "type": "custom:tide16-readout",
-        "title": "Preset",
-        "title_size": "0.844cqw",
-        "title_gap": "0",
-        "style": {
-          "left": "34.372%",
-          "top": "58.726%",
-          "transform": "translate(0, 0)"
-        }
-      },
-      {
-        "type": "custom:tide16-readout",
-        "size": "1.216cqw",
-        "color": "#BFC0C0",
-        "row_gap": "0",
-        "rows": [
-          {
-            "entity": "sensor.tide16_preset",
-            "attribute": "preset_index"
-          }
-        ],
-        "style": {
-          "left": "34.372%",
-          "top": "64.723%",
-          "transform": "translate(0, 0)"
-        }
-      },
-      {
-        "type": "custom:tide16-readout",
-        "size": "1.075cqw",
-        "color": "#BFC0C0",
-        "row_gap": "0",
-        "scroll": true,
-        "rows": [
-          {
-            "entity": "sensor.tide16_preset"
-          }
-        ],
-        "style": {
-          "left": "34.372%",
-          "top": "71.431%",
-          "width": "6.332%",
-          "transform": "translate(0, 0)"
-        }
-      },
-      {
-        "type": "conditional",
-        "conditions": [
-          {
-            "entity": "binary_sensor.tide16_atmos",
-            "state": "on"
-          }
-        ],
-        "elements": [
-          {
-            "type": "image",
-            "image": "/tide16_static/dolby-atmos.png",
-            "style": {
-              "left": "34.698%",
-              "top": "23.938%",
-              "width": "5.226%",
-              "transform": "translate(0, 0)",
-              "filter": "brightness(0.91)",
-              "pointer-events": "none"
-            }
-          }
-        ]
-      },
-      {
-        "type": "conditional",
-        "conditions": [
-          {
-            "entity": "switch.tide16_dirac_live",
-            "state": "on"
-          }
-        ],
-        "elements": [
-          {
-            "type": "image",
-            "image": "/tide16_static/dirac-a.png",
-            "tap_action": {
-              "action": "perform-action",
-              "perform_action": "switch.toggle",
-              "target": {
-                "entity_id": "switch.tide16_dirac_live"
-              }
-            },
-            "style": {
-              "left": "35.930%",
-              "top": "37.975%",
-              "width": "2.764%",
-              "transform": "translate(0, 0)",
-              "cursor": "pointer"
-            }
-          }
-        ]
-      },
-      {
-        "type": "conditional",
-        "conditions": [
-          {
-            "entity": "switch.tide16_dirac_live",
-            "state_not": "on"
-          }
-        ],
-        "elements": [
-          {
-            "type": "image",
-            "image": "/tide16_static/dirac-a.png",
-            "tap_action": {
-              "action": "perform-action",
-              "perform_action": "switch.toggle",
-              "target": {
-                "entity_id": "switch.tide16_dirac_live"
-              }
-            },
-            "style": {
-              "left": "35.930%",
-              "top": "37.975%",
-              "width": "2.764%",
-              "transform": "translate(0, 0)",
-              "filter": "grayscale(1) brightness(0.496)",
-              "cursor": "pointer"
-            }
-          }
-        ]
       },
       {
         "type": "conditional",
@@ -3077,7 +2917,7 @@ const PANEL_LAYOUT = {
             "entity_id": "button.tide16_reboot"
           }
         },
-        "color": "#BFC0C0",
+        "color": "#FF3B30",
         "busy_colors": [
           "#B300FF",
           "#F52727"
@@ -3103,7 +2943,7 @@ const PANEL_LAYOUT = {
         "type": "custom:tide16-readout",
         "title": "Reboot",
         "title_size": "0.804cqw",
-        "title_color": "#B7B8B8",
+        "title_color": "#FF3B30",
         "title_gap": "0",
         "align": "center",
         "style": {
@@ -3270,7 +3110,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.3.0",
+        "title": "v2.4.0",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3280,6 +3120,324 @@ const PANEL_LAYOUT = {
           "left": "unset",
           "top": "91.625%",
           "width": "4.020%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "binary_sensor.tide16_atmos",
+            "state": "on"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/badge-dolby-atmos.png",
+            "style": {
+              "left": "15.578%",
+              "top": "61.250%",
+              "width": "6.030%",
+              "transform": "translate(0, 0)",
+              "pointer-events": "none"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "binary_sensor.tide16_atmos",
+            "state": "off"
+          },
+          {
+            "entity": "select.tide16_upmixer",
+            "state": "DTS-X"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/badge-dtsx.png",
+            "style": {
+              "left": "15.578%",
+              "top": "61.250%",
+              "width": "6.030%",
+              "transform": "translate(0, 0)",
+              "pointer-events": "none"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "binary_sensor.tide16_atmos",
+            "state": "off"
+          },
+          {
+            "entity": "select.tide16_upmixer",
+            "state": "Dolby"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/badge-dolby-audio.png",
+            "style": {
+              "left": "15.578%",
+              "top": "61.250%",
+              "width": "6.030%",
+              "transform": "translate(0, 0)",
+              "pointer-events": "none"
+            }
+          }
+        ]
+      },
+      {
+        "type": "image",
+        "image": "/tide16_static/dirac-white.png",
+        "tap_action": {
+          "action": "perform-action",
+          "perform_action": "switch.toggle",
+          "target": {
+            "entity_id": "switch.tide16_dirac_live"
+          }
+        },
+        "style": {
+          "left": "22.211%",
+          "top": "60.250%",
+          "width": "2.814%",
+          "transform": "translate(0, 0)",
+          "cursor": "pointer"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Modes",
+        "title_image": "/tide16_static/dolby.png?v=1",
+        "title_image_alt": "Dolby",
+        "title_size": "1.070cqw",
+        "title_color": "#BFC0C0",
+        "title_gap": "0",
+        "align": "center",
+        "style": {
+          "left": "59.598%",
+          "top": "25.225%",
+          "width": "10.201%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-inputs",
+        "columns": 1,
+        "rows": 3,
+        "row_gap": "1.190cqw",
+        "dot": "1.005cqw",
+        "dot_gap": "0.402cqw",
+        "size": "0.804cqw",
+        "weight": "400",
+        "color": "#B7B8B8",
+        "active_entity": "select.tide16_upmixer",
+        "active_attribute": null,
+        "active_color": "#FFFFFF",
+        "active_background": "#32CD32",
+        "active_border": "1px solid #FFFFFF",
+        "active_weight": "700",
+        "items": [
+          {
+            "text": "Native",
+            "value": "Native",
+            "hint": "Set upmixer: Native",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_upmixer",
+                "option": "Native"
+              }
+            }
+          },
+          {
+            "text": "Dolby",
+            "value": "Dolby",
+            "hint": "Set upmixer: Dolby",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_upmixer",
+                "option": "Dolby"
+              }
+            }
+          },
+          {
+            "text": "DTS-X",
+            "value": "DTS-X",
+            "hint": "Set upmixer: DTS-X",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_upmixer",
+                "option": "DTS-X"
+              }
+            }
+          }
+        ],
+        "style": {
+          "left": "62.513%",
+          "top": "36.473%",
+          "width": "4.472%",
+          "height": "25.575%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "In",
+        "title_size": "0.744cqw",
+        "title_color": "#FFFFFF",
+        "title_gap": "0",
+        "style": {
+          "left": "26.281%",
+          "top": "58.726%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Out",
+        "title_size": "0.744cqw",
+        "title_color": "#FFFFFF",
+        "title_gap": "0",
+        "style": {
+          "left": "31.357%",
+          "top": "58.726%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Preset",
+        "title_size": "0.744cqw",
+        "title_color": "#FFFFFF",
+        "title_gap": "0",
+        "style": {
+          "left": "36.332%",
+          "top": "58.726%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.075cqw",
+        "color": "#FFFFFF",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_input_format"
+          }
+        ],
+        "style": {
+          "left": "26.281%",
+          "top": "64.723%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "0.844cqw",
+        "color": "#FFFFFF",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_sample_rate_khz"
+          }
+        ],
+        "style": {
+          "left": "26.281%",
+          "top": "71.431%",
+          "transform": "translate(0, 0)",
+          "width": "4.774%"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.075cqw",
+        "color": "#FFFFFF",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_speaker_config"
+          }
+        ],
+        "style": {
+          "left": "31.357%",
+          "top": "64.723%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "select.tide16_upmixer",
+            "state": "Dolby"
+          }
+        ],
+        "elements": [
+          {
+            "type": "custom:tide16-readout",
+            "title": "Upmixed",
+            "title_size": "0.844cqw",
+            "title_color": "#FFFFFF",
+            "title_gap": "0",
+            "style": {
+              "left": "31.357%",
+              "top": "71.431%",
+              "transform": "translate(0, 0)"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "select.tide16_upmixer",
+            "state": "DTS-X"
+          }
+        ],
+        "elements": [
+          {
+            "type": "custom:tide16-readout",
+            "title": "Upmixed",
+            "title_size": "0.844cqw",
+            "title_color": "#FFFFFF",
+            "title_gap": "0",
+            "style": {
+              "left": "31.357%",
+              "top": "71.431%",
+              "transform": "translate(0, 0)"
+            }
+          }
+        ]
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.075cqw",
+        "color": "#FFFFFF",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_preset",
+            "attribute": "preset_index"
+          }
+        ],
+        "style": {
+          "left": "36.332%",
+          "top": "64.723%",
           "transform": "translate(0, 0)"
         }
       }
@@ -3471,7 +3629,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.3.0';
+const TIDE16_VERSION = '2.4.0';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

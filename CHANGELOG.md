@@ -1,5 +1,48 @@
 # Changelog
 
+## v2.4.0 - 2026-08-16
+
+**The panel now follows the hardware, not a mock.**
+
+Everything before this was anchored to `base-T16.pxd`, a design file - and the
+shipping firmware does not draw that screen.  A photograph of a running unit
+settled it, and the layout was rebuilt against the device:
+
+* **There is no "Program" cell and no "Listening" cell.**  The unit's bottom
+  strip is `ready` and a decoder badge on the left, then a three-column table
+  headed **In / Out / Preset** on the right.  `plate-v3.png` is `plate-v2.png`
+  with those two baked labels painted out - a new filename, because a plate
+  replaced in place gets served from cache and presents as live bars animating
+  behind painted ones.
+* **The meter runs the full width**, x353..796 instead of stopping at x664.
+  Nothing in the artwork ever stopped it: the only vertical rule in the whole
+  meter band is the one at x343.  The old box was a habit inherited from a
+  "badges cell" this design invented and the device does not have.
+* **A decoder badge** - Dolby AUDIO, Dolby Atmos or dts:x, and nothing at all
+  in Native, which is what the hardware shows.  Driven by
+  `select.tide16_upmixer`, so plain conditionals can do it: the obvious
+  alternative is an attribute, and picture-elements conditionals cannot see
+  attributes at all - they silently fall back to testing the entity state and
+  appear to work for the wrong reason.
+* **A Dolby Modes column** - Native / Dolby / DTS-X - in the void to the right
+  of the standby button, registered to the Profiles column's own geometry.
+* **`ready` is violet**, where the plate used to bake "Program".  Measured off
+  the photo at #BF6DFE, which is a blown camera highlight, so #A96BF5 goes in.
+  It was #332050, effectively invisible.
+* **The volume is the size the unit draws it** - its digits fill about 73% of
+  the dB cell where ours filled 54% - and sized to the widest reading rather
+  than the current one, so `-100.5` still fits.
+* **The source and the In/Out/Preset table are white.**  The hardware carries
+  that block's hierarchy entirely by size, not by tone, and at 12.6px full
+  white is needed for it to read as white at all.
+* **Reboot is red**, glyph and label.
+
+A measurement worth keeping: the bottom rule the hardware draws lands at 0.635
+of the screen, which is x514, against the x506 the plate already carried.  The
+art and the firmware agreed all along; only the placement did not.
+
+`docs/panel-layout.annotated.yaml` carries all of it - every box, and why.
+
 ## v2.3.0 - 2026-08-16
 
 **The upmixer is now a control, not just a readout.**  `select.tide16_upmixer`
