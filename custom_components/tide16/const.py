@@ -25,4 +25,9 @@ SERVICE_VOLUME_STEP: Final = "volume_step"
 ATTR_DELTA: Final = "delta"
 
 DOLBY_PROFILES: Final = ("off", "movie", "music", "night")
+
+# The upmixer, which the unit calls the "decoder". Its own control page labels
+# datmos "Dolby" and dts "Neural:X"; the front panel shows the Dolby AUDIO and
+# dts:x lockups for them, and nothing at all for native.
+UPMIXERS: Final = {"native": "Native", "datmos": "Dolby", "dts": "DTS-X"}
 SCENES: Final = ("red", "green", "yellow", "blue")

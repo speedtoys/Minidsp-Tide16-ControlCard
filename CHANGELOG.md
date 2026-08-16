@@ -1,5 +1,58 @@
 # Changelog
 
+## v2.3.0 - 2026-08-16
+
+**The upmixer is now a control, not just a readout.**  `select.tide16_upmixer`
+offers Native / Dolby / DTS-X and writes them with `set_forced_upmixer`.  The
+unit calls this the *upmixer* when reading and the **`decoder`** when writing,
+which is not guessable - it rejects the request until given that key.  This is
+also the only field that tells Native apart from the rest: in Native the
+decoder names carry straight on reporting whatever they last decoded.
+
+**Real meter ballistics.**  The bars used to glide with a CSS transition,
+symmetric and eased.  Now they rise on a 10ms constant and fall at a fixed
+**20 dB/s**, with a peak marker that holds 1.2s and then falls at 8 dB/s.
+
+The rate is the point.  An exponential ease closes a *fraction* of the
+remaining gap, so a bar falling from -6dB moves fast and the same bar near the
+floor crawls - the fall rate you perceive depends on where the bar happens to
+be.  A real meter falls at the same dB/s everywhere, which is what lets two
+channels be compared while both are decaying.  Peak markers are separate
+elements rather than a border on the bar, because the bar is clipped and a
+border would be clipped with it exactly when the marker needs to still be
+visible.  Tunable per card: `attack_ms`, `decay_db_s`, `peak_hold_ms`,
+`peak_decay_db_s`, `peak_height_px`, `peak_color`, and `peak: false`.  Setting
+`decay_db_s: 0` restores the old CSS glide.
+
+**`sensor.tide16_input_format`** - `channel_config` 2 becomes `2.0`, 6 becomes
+`5.1`, 8 becomes `7.1`.  The unit prints this formatting on its own front
+panel, so the decimal is the device's convention rather than an invention.  It
+is a sensor because a dashboard can only print an attribute verbatim, and
+doing it in a card template means a templating card re-rendering the whole
+panel every time the stream twitches.
+
+**The decoder no longer repeats itself.**  The unit suffixes "decoder" onto
+every decoder name, so a panel row already labelled Decoder read "Decoder:
+unknown decoder".  Trimmed at the sensor: `LPCM decoder` becomes `LPCM`, and a
+name that carries no suffix (`DTS_NEURAL_X`) is left exactly as it is.
+
+**Changing the Dolby profile no longer takes two taps.**
+
+The unit accepts `set_dolby_profile` in about 3ms and actually applies it
+about **570ms later**, and nothing pushes the change - a read-back is the only
+confirmation there is.  The entity refreshed immediately after sending, so it
+read the *old* value every single time and then sat one step behind until the
+next periodic poll.  That is what made a profile change appear to need two
+taps: the second tap's read-back was what finally reported the first tap's
+change.
+
+Now the requested value is shown at once, so a tap gets an answer immediately,
+and the read-back is polled every 250ms for up to 3s until the device agrees.
+If it never agrees the pending value is dropped and the device's own reading
+stands - `set_dolby_profile` is not in the endpoint list the unit publishes,
+so a firmware without it has to snap visibly back rather than leave a lie on
+screen.
+
 ## v2.2.0 - 2026-08-16
 
 **Setup finds the unit for you.**  Open the integration and it sweeps the local

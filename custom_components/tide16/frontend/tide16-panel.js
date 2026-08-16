@@ -255,7 +255,34 @@ const DEFAULTS = {
   floor_db: -60, // used only when ceiling_entity is unset/unavailable
   ceiling_db: 0,
 
-  transition_ms: 260, // ~= the 250ms push, so bars glide instead of stepping
+  // Ballistics, the way a real meter does it.
+  //
+  // Fall is a RATE, in dB per second - not a time constant. That is the
+  // difference between this and an eased tween: an exponential ease closes a
+  // fraction of the remaining gap, so a bar falling from -6dB moves fast and
+  // the same bar near the floor crawls, and the fall rate you perceive
+  // depends on where the bar happens to be. A real meter falls at the same
+  // dB/s everywhere, which is what makes two channels comparable while they
+  // are both decaying. 20 dB/s is in the usual range for a peak meter.
+  //
+  // Attack is a short time constant rather than truly instant: at 4Hz data a
+  // hard jump reads as a flicker, and ~10ms still arrives well inside one
+  // frame.
+  //
+  // The peak marker holds the recent maximum, then falls at its own slower
+  // rate - that is the part that makes transients readable, because the bar
+  // itself is long gone by the time the eye gets there.
+  //
+  // Set decay_db_s to 0 to go back to the old symmetric CSS glide.
+  attack_ms: 10,
+  decay_db_s: 20,
+  peak: true,
+  peak_hold_ms: 1200,
+  peak_decay_db_s: 8,
+  peak_height_px: 2,
+  peak_color: '#FFFFFF',
+
+  transition_ms: 260, // only used when decay_ms is 0 - the old CSS glide
 
   // The 1-16 channel numbers. base-T16.pxd does NOT bake these in the way
   // the old photo plate did, so the meter draws its own - which is
@@ -290,6 +317,15 @@ class Tide16Bars extends HTMLElement {
     this._pending = false; // a subscribe is in flight
     this._unsub = null; // resolved unsubscribe, once the socket answers
     this._sub = 0; // generation, so a late subscribe can't outlive its request
+    this._target = []; // where each bar is heading, straight off the data
+    this._shown = []; // where it actually is, after ballistics
+    this._peaks = []; // the held maximum per channel
+    this._peakShown = [];
+    this._peakUntil = []; // when each peak is free to start falling
+    this._peaks_el = [];
+    this._span = 40; // dB across the meter box, for the dB/s -> %/s conversion
+    this._raf = 0;
+    this._lastTick = 0;
     this._onVisibility = () => this._syncSubscription();
   }
 
@@ -332,6 +368,10 @@ class Tide16Bars extends HTMLElement {
     }
     document.removeEventListener('visibilitychange', this._onVisibility);
     this._unsubscribe();
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = 0;
+    }
     // A running animation on a detached element keeps a live timer and a
     // compositor layer for a view nobody is looking at.
     this._stopIdle();
@@ -343,6 +383,15 @@ class Tide16Bars extends HTMLElement {
     const wanted = this._onScreen && document.visibilityState === 'visible';
     if (wanted) this._subscribe();
     else this._unsubscribe();
+    // The ballistics loop rides the same gate. Off screen it is stopped, and
+    // the bars are left wherever they were - the next frame of data snaps
+    // them, which nobody sees because nobody is looking.
+    if (wanted) {
+      this._kick();
+    } else if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = 0;
+    }
     // Same gate as the metering: off screen or tab hidden, nothing runs.
     // Without this the scroller animates forever behind another view.
     //
@@ -405,6 +454,12 @@ class Tide16Bars extends HTMLElement {
   _build() {
     this.innerHTML = '';
     this._bars = [];
+    this._target = new Array(GEOMETRY.channels).fill(0);
+    this._shown = new Array(GEOMETRY.channels).fill(0);
+    this._peaks = new Array(GEOMETRY.channels).fill(0);
+    this._peakShown = new Array(GEOMETRY.channels).fill(-1);
+    this._peakUntil = new Array(GEOMETRY.channels).fill(0);
+    this._peaks_el = [];
     Object.assign(this.style, {
       display: 'block',
       position: 'absolute',
@@ -423,11 +478,34 @@ class Tide16Bars extends HTMLElement {
         // Fully clipped = silent. inset() clips from the top, so the
         // revealed slice always grows up from the baseline.
         clipPath: 'inset(100% 0 0 0)',
-        transition: `clip-path ${this._cfg.transition_ms}ms linear`,
+        // With ballistics the clip is driven frame by frame, so a CSS
+        // transition would fight it - every frame would start a new 260ms
+        // animation toward a target that has already moved.
+        transition: this._ballistic()
+          ? 'none'
+          : `clip-path ${this._cfg.transition_ms}ms linear`,
         willChange: 'clip-path',
       });
       this.appendChild(bar);
       this._bars.push(bar);
+
+      if (this._cfg.peak && this._ballistic()) {
+        // Its own element rather than a border on the bar: the bar is clipped
+        // and a border would be clipped with it, which is precisely when the
+        // marker needs to still be visible.
+        const mark = document.createElement('div');
+        Object.assign(mark.style, {
+          position: 'absolute',
+          left: `${i * GEOMETRY.pitchPct}%`,
+          width: `${GEOMETRY.barWidthPct}%`,
+          height: `${this._cfg.peak_height_px}px`,
+          background: this._cfg.peak_color,
+          display: 'none',
+          pointerEvents: 'none',
+        });
+        this.appendChild(mark);
+        this._peaks_el.push(mark);
+      }
     }
 
     if (this._cfg.idle) this._buildIdle();
@@ -640,6 +718,92 @@ class Tide16Bars extends HTMLElement {
     return { ceiling: this._cfg.ceiling_db, floor: this._cfg.floor_db };
   }
 
+  _ballistic() {
+    return Number(this._cfg.decay_db_s) > 0;
+  }
+
+  /* Ease every bar toward its target, fast up and slow down.
+   *
+   * Runs off requestAnimationFrame rather than the data rate: the unit pushes
+   * at 4Hz at best, and a 250ms step is visible as a stair no matter what
+   * easing is applied to it. Gated by the same on-screen test as the metering
+   * subscription, so nothing animates behind another view. */
+  _tick(now) {
+    this._raf = 0;
+    if (!this._ballistic() || !this._bars.length) return;
+
+    const prev = this._lastTick || now;
+    const dt = Math.min(100, Math.max(0, now - prev));  // clamp: a backgrounded
+    this._lastTick = now;                               // tab returns a huge dt
+
+    const attack = Math.max(1, Number(this._cfg.attack_ms) || 1);
+    // dB/s -> %/s. The bar is drawn in percent of the meter box, and the box
+    // spans `span` dB, so a fixed dB rate is a fixed percentage rate only
+    // once you know the current scale. The scale moves with the volume, so
+    // this is recomputed rather than cached.
+    const span = this._span || 40;
+    const fallPct = (Number(this._cfg.decay_db_s) / span) * 100 * (dt / 1000);
+    const peakFallPct =
+      (Number(this._cfg.peak_decay_db_s) / span) * 100 * (dt / 1000);
+    const holdMs = Number(this._cfg.peak_hold_ms) || 0;
+
+    // "is there still work to do", NOT "did anything move this frame". The
+    // first frame after a kick has dt = 0 (there is no previous timestamp to
+    // measure from), so nothing moves on it - and keying the loop off actual
+    // movement made it stop dead on that very first frame, every time. The
+    // bars then sat frozen at their last value while the data carried on
+    // updating underneath them.
+    let pending = false;
+    for (let i = 0; i < this._bars.length; i++) {
+      const target = this._target[i] || 0;
+      let cur = this._shown[i] || 0;
+
+      if (target > cur) {
+        // Rising: a short time constant, so a transient lands inside one
+        // frame without reading as a flicker.
+        cur = cur + (target - cur) * (1 - Math.exp(-dt / attack));
+        if (target - cur < 0.05) cur = target;
+      } else if (cur > target) {
+        // Falling: a constant dB/s, never past the target.
+        cur = Math.max(target, cur - fallPct);
+      }
+      if (cur !== this._shown[i]) {
+        this._shown[i] = cur;
+        this._bars[i].style.clipPath = `inset(${100 - cur}% 0 0 0)`;
+      }
+      if (Math.abs(target - cur) > 0.01) pending = true;
+
+      if (!this._peaks.length) continue;
+      let peak = this._peaks[i] || 0;
+      if (cur >= peak) {
+        peak = cur;
+        this._peakUntil[i] = now + holdMs;
+      } else if (now >= (this._peakUntil[i] || 0)) {
+        peak = Math.max(cur, peak - peakFallPct);
+      }
+      if (peak !== this._peakShown[i]) {
+        this._peakShown[i] = peak;
+        const el = this._peaks_el[i];
+        // Hidden when the peak has caught the bar up: a marker sitting on top
+        // of a full bar is just a brighter cap, which reads as an artefact.
+        el.style.display = peak > 0.5 && peak > cur + 0.5 ? 'block' : 'none';
+        el.style.bottom = `${peak}%`;
+      }
+      this._peaks[i] = peak;
+      if (peak > cur + 0.01) pending = true;   // still has somewhere to fall
+    }
+
+    if (pending && this._onScreen && document.visibilityState === 'visible') {
+      this._raf = requestAnimationFrame((t) => this._tick(t));
+    }
+  }
+
+  _kick() {
+    if (!this._ballistic() || this._raf) return;
+    this._lastTick = 0;
+    this._raf = requestAnimationFrame((t) => this._tick(t));
+  }
+
   _render() {
     if (!this._bars.length) return;
     const levels = this._levels();
@@ -650,6 +814,7 @@ class Tide16Bars extends HTMLElement {
     const { floor, ceiling } = this._scale();
     const span = ceiling - floor;
     if (!(span > 0)) return;
+    this._span = span;
 
     for (let i = 0; i < this._bars.length; i++) {
       const db = levels && typeof levels[i] === 'number' ? levels[i] : null;
@@ -658,8 +823,13 @@ class Tide16Bars extends HTMLElement {
         pct = ((db - floor) / span) * 100;
         pct = Math.max(0, Math.min(100, pct));
       }
-      this._bars[i].style.clipPath = `inset(${100 - pct}% 0 0 0)`;
+      if (this._ballistic()) {
+        this._target[i] = pct;
+      } else {
+        this._bars[i].style.clipPath = `inset(${100 - pct}% 0 0 0)`;
+      }
     }
+    this._kick();
   }
 
   // picture-elements asks elements for a size hint; ours is positioned
@@ -3100,7 +3270,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.2.0",
+        "title": "v2.3.0",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3301,7 +3471,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.2.0';
+const TIDE16_VERSION = '2.3.0';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

@@ -72,6 +72,9 @@ SET_PRESET: Final = "set_preset"
 SET_DIRAC_STATE: Final = "set_dirac_state"
 SET_BT_PAIRING: Final = "set_bt_pairing_mode"
 SET_DOLBY_PROFILE: Final = "set_dolby_profile"
+# Takes a `decoder` key, not a `value` - the unit says so when it is
+# missing. Values are the three the unit's own control page offers.
+SET_FORCED_UPMIXER: Final = "set_forced_upmixer"
 REBOOT: Final = "reboot"
 SHUTDOWN: Final = "shutdown"
 

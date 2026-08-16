@@ -318,6 +318,12 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         if isinstance(dolby, dict) and isinstance(dolby.get("profile"), str):
             self.data["dolby_profile"] = dolby["profile"]
 
+        # The active upmixer. This is what the front panel's Dolby AUDIO /
+        # dts:x badge is lit from, and it is the only field that tells native
+        # apart from the others - the decoder names do not.
+        if isinstance(data.get("upmixer"), str):
+            self.data["upmixer"] = data["upmixer"]
+
         self.data["versions"] = {
             "tide": _clean(data.get("version")),
             "hdmi_card": _clean(data.get("hdmi_card_firmware_version")),
@@ -370,6 +376,7 @@ def _blank() -> dict[str, Any]:
         "dirac_measuring": None,
         "bluetooth": {},
         "dolby_profile": None,
+        "upmixer": None,
         "versions": {},
         "signal": False,
     }

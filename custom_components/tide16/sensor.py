@@ -50,6 +50,41 @@ def _rate_khz(data: dict[str, Any]) -> str | None:
     return f"{khz:g} kHz"
 
 
+def _decoder(data: dict[str, Any]) -> str | None:
+    """"LPCM decoder" -> "LPCM", "unknown decoder" -> "unknown".
+
+    The unit suffixes the word onto every decoder name, which reads as
+    "Decoder: unknown decoder" once the panel has already labelled the row.
+    Names that carry no suffix (DTS_NEURAL_X) are left exactly as they are.
+    """
+    raw = _stream(data).get("decoder_type")
+    if not isinstance(raw, str):
+        return None
+    trimmed = raw.strip()
+    if trimmed.lower().endswith(" decoder"):
+        trimmed = trimmed[: -len(" decoder")].strip()
+    return trimmed or None
+
+
+def _input_format(data: dict[str, Any]) -> str | None:
+    """channel_config 2 -> "2.0", 6 -> "5.1", 8 -> "7.1".
+
+    The unit prints this formatting on its own front panel, so the decimal is
+    the device's convention rather than an invention here. It exists as a
+    sensor because a dashboard can only read an attribute verbatim - and
+    because doing it in a card template means a templating card re-rendering
+    the whole panel every time the stream twitches.
+    """
+    raw = _stream(data).get("channel_config")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    return f"{n}.0" if n <= 2 else f"{n - 1}.1"
+
+
 def _preset_fallback(data: dict[str, Any]) -> str | None:
     index = data.get("preset_index")
     return None if index is None else f"Preset {index}"
@@ -89,12 +124,17 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
         name="Stream",
         value=lambda d: _stream(d).get("decoder_stream_src_format"),
         attributes=lambda d: {
-            "decoder_type": _stream(d).get("decoder_type"),
+            "decoder_type": _decoder(d),
             "sample_rate": _stream(d).get("sample_rate"),
             "channel_config": _stream(d).get("channel_config") or None,
             "stream_type": _stream(d).get("decoder_stream_type"),
             "processing": _stream(d).get("decoder_stream_proc_type"),
         },
+    ),
+    Tide16SensorDescription(
+        key="input_format",
+        name="Input Format",
+        value=_input_format,
     ),
     Tide16SensorDescription(
         key="sample_rate_khz",
