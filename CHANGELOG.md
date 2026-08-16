@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.4.1 - 2026-08-16
+
+**Settings now follow the device, not just Home Assistant.**  `get_settings`
+is the only source for the upmixer, the Dolby profile and the source map, and
+nothing pushes any of them - so a change made on the front panel, the remote
+or the unit's own web page took up to a minute to appear.  It has its own 5s
+loop now.  Not by turning `FULL_REFRESH` down: that drives a sweep of
+fourteen endpoints, and pulling all of them up twelvefold is a lot of traffic
+to aim at a unit for the sake of one reply.  Measured end to end: a decoder
+changed straight at the device shows in Home Assistant in about a second.
+
+**`In` says `Bitstream`.**  On a bitstream the unit sends `channel_config: ""`
+and sets `is_bitstream`, so there is no channel count to render - its own
+panel prints the word, and this now does too instead of falling back to a
+dash.
+
+**`Out` no longer claims `Upmixed` when nothing is being upmixed.**  It was
+inferred from the selected upmixer, which only holds for LPCM: a native Atmos
+bitstream is DECODED to 7.2.4, not upmixed to it, and the hardware prints
+nothing under the layout.  `binary_sensor.tide16_upmixed` carries the device's
+own `is_lpcm_upmixed` instead, and the row is a conditional, so absent is
+exactly what appears.
+
+**The sample rate keeps its decimal** - `48.0 kHz`, not `48 kHz`, which is
+what the unit's panel shows.  `%g` was dropping the trailing zero.
+
+**`Dolby Digital Plus with Dolby Atmos` is shortened to `DD+ W/Atmos`.**  At
+35 characters it ran underneath the Dolby lockup, since the Program rows
+shrink-wrap and the badge starts at x310.  Exact matches only - a stream this
+does not know is passed through untouched, because guessing an abbreviation
+for a format nobody has seen is how a panel ends up asserting something the
+device never said.
+
 ## v2.4.0 - 2026-08-16
 
 **The panel now follows the hardware, not a mock.**

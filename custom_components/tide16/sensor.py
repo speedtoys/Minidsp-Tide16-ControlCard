@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -47,7 +47,30 @@ def _rate_khz(data: dict[str, Any]) -> str | None:
     if hz <= 0:
         return None
     khz = hz / 1000
-    return f"{khz:g} kHz"
+    # One decimal always, which is what the unit's own panel prints: 48.0 kHz,
+    # not 48 kHz. %g drops the trailing zero and made the two disagree.
+    return f"{khz:.1f} kHz"
+
+
+# Names the unit reports that are too long for the Program cell. The row
+# shrink-wraps and the decoder badge starts at x310, so anything much past
+# thirty characters runs underneath the Dolby lockup.
+#
+# Exact matches only, keyed lower-case. A stream this does not know is passed
+# through untouched - guessing at an abbreviation for a format nobody has seen
+# is how a panel ends up asserting something the device never said.
+STREAM_SHORT_FORMS: Final = {
+    "dolby digital plus with dolby atmos": "DD+ W/Atmos",
+}
+
+
+def _stream_name(data: dict[str, Any]) -> str | None:
+    """The stream description, shortened when it is one we know is too long."""
+    raw = _stream(data).get("decoder_stream_src_format")
+    if not isinstance(raw, str):
+        return raw
+    trimmed = raw.strip()
+    return STREAM_SHORT_FORMS.get(trimmed.lower(), trimmed) or None
 
 
 def _decoder(data: dict[str, Any]) -> str | None:
@@ -67,7 +90,7 @@ def _decoder(data: dict[str, Any]) -> str | None:
 
 
 def _input_format(data: dict[str, Any]) -> str | None:
-    """channel_config 2 -> "2.0", 6 -> "5.1", 8 -> "7.1".
+    """channel_config 2 -> "2.0", 6 -> "5.1", 8 -> "7.1", a bitstream -> "Bitstream".
 
     The unit prints this formatting on its own front panel, so the decimal is
     the device's convention rather than an invention here. It exists as a
@@ -75,6 +98,12 @@ def _input_format(data: dict[str, Any]) -> str | None:
     because doing it in a card template means a templating card re-rendering
     the whole panel every time the stream twitches.
     """
+    # A bitstream has no channel count to report - the unit sends
+    # channel_config "" and says so with is_bitstream, and its own panel
+    # prints the word rather than a number.
+    if _stream(data).get("is_bitstream"):
+        return "Bitstream"
+
     raw = _stream(data).get("channel_config")
     try:
         n = int(raw)
@@ -122,7 +151,7 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
     Tide16SensorDescription(
         key="stream",
         name="Stream",
-        value=lambda d: _stream(d).get("decoder_stream_src_format"),
+        value=_stream_name,
         attributes=lambda d: {
             "decoder_type": _decoder(d),
             "sample_rate": _stream(d).get("sample_rate"),

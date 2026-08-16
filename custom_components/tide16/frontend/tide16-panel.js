@@ -3110,7 +3110,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.0",
+        "title": "v2.4.1",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3382,31 +3382,8 @@ const PANEL_LAYOUT = {
         "type": "conditional",
         "conditions": [
           {
-            "entity": "select.tide16_upmixer",
-            "state": "Dolby"
-          }
-        ],
-        "elements": [
-          {
-            "type": "custom:tide16-readout",
-            "title": "Upmixed",
-            "title_size": "0.844cqw",
-            "title_color": "#FFFFFF",
-            "title_gap": "0",
-            "style": {
-              "left": "31.357%",
-              "top": "71.431%",
-              "transform": "translate(0, 0)"
-            }
-          }
-        ]
-      },
-      {
-        "type": "conditional",
-        "conditions": [
-          {
-            "entity": "select.tide16_upmixer",
-            "state": "DTS-X"
+            "entity": "binary_sensor.tide16_upmixed",
+            "state": "on"
           }
         ],
         "elements": [
@@ -3629,7 +3606,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.0';
+const TIDE16_VERSION = '2.4.1';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

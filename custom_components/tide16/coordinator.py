@@ -60,8 +60,17 @@ FULL_REFRESH = 60.0
 IDLE_METERING = 5.0
 FAST_METERING = 0.25
 
-# Nothing pushes get_settings, and it is a big reply - re-read it on the slow
-# sweep only, plus once whenever something we set through it changes.
+# get_settings gets its own loop, because it is the only source for things the
+# user can change WITHOUT Home Assistant - the upmixer, the Dolby profile, the
+# source map - and nothing pushes any of them. Left on the 60s sweep, a change
+# made on the front panel, the remote or the unit's own web page took up to a
+# minute to show, which reads as the panel being out of sync with the device.
+#
+# It is a big reply, so it is on its own timer rather than pulling the whole
+# 14-endpoint sweep up with it.
+SETTINGS_REFRESH = 5.0
+
+DISCONNECTED_STATUS = "not connected"
 DISCONNECTED_STATUS = "not connected"
 
 
@@ -105,6 +114,9 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._loops = [
             self.hass.async_create_background_task(self._refresh_loop(), "tide16 sweep"),
             self.hass.async_create_background_task(self._metering_loop(), "tide16 meter"),
+            self.hass.async_create_background_task(
+                self._settings_loop(), "tide16 settings"
+            ),
         ]
 
     async def async_stop(self) -> None:
@@ -136,6 +148,13 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._sweep()
             await asyncio.sleep(FULL_REFRESH)
 
+    async def _settings_loop(self) -> None:
+        """Keep the settings-only values following the device, not just us."""
+        while True:
+            if self._client.connected:
+                await self._client.send(GET_SETTINGS)
+            await asyncio.sleep(SETTINGS_REFRESH)
+
     async def _metering_loop(self) -> None:
         while True:
             if self._client.connected:
@@ -144,6 +163,8 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _sweep(self) -> None:
         for endpoint in REFRESH_ENDPOINTS:
+            if endpoint == GET_SETTINGS:
+                continue  # _settings_loop owns this one
             if not await self._client.send(endpoint):
                 return
             # the unit answers in order; this keeps a burst of 14 requests from

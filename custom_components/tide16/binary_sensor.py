@@ -45,8 +45,22 @@ def _atmos(data: dict[str, Any]) -> bool:
     return "atmos" in haystack
 
 
+def _upmixed(data: dict[str, Any]) -> bool:
+    """Whether the output is an UPMIX rather than what arrived.
+
+    The unit's own panel prints "Upmixed" under the output layout only when
+    this is set, and nothing at all otherwise - a native Atmos bitstream is
+    decoded to 7.2.4, not upmixed to it, and the panel says nothing.
+
+    Inferring it from the selected upmixer is wrong for exactly that case: the
+    upmixer can be Dolby while the stream needs no upmixing at all.
+    """
+    return bool((data.get("stream") or {}).get("is_lpcm_upmixed"))
+
+
 BINARY_SENSORS: tuple[Tide16BinaryDescription, ...] = (
     Tide16BinaryDescription(key="atmos", name="Atmos", value=_atmos),
+    Tide16BinaryDescription(key="upmixed", name="Upmixed", value=_upmixed),
     Tide16BinaryDescription(
         key="audio_signal",
         name="Audio Signal",
