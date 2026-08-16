@@ -1,0 +1,62 @@
+NOTICE - what the MIT license in LICENSE does and does not cover
+================================================================
+
+This file used to be a paragraph at the top of LICENSE. It was moved here
+because any text added to the MIT wording stops GitHub - and the HACS
+validation that reads GitHub - from identifying the license at all, which
+made the repo look unlicensed rather than carefully licensed.
+
+Nothing about the terms has changed by moving them.
+
+
+COVERED by the MIT license
+--------------------------
+
+The source code of this repository:
+
+  custom_components/tide16/**/*.py    the integration and its API client
+  custom_components/tide16/frontend/tide16-panel.js
+                                      the card and its seven elements
+  custom_components/tide16/brand/*.png
+                                      the brand icon - original artwork,
+                                      drawn by tools/make_brand_icon.py
+  lovelace/, docs/panel-layout.annotated.yaml, tools/
+                                      the example view, the layout record
+                                      and the build scripts
+
+The WebSocket client was written against miniDSP's published API and a
+recorded session with the hardware. No code from any other implementation
+is in it.
+
+
+NOT COVERED - the image assets
+------------------------------
+
+The MIT grant conveys NO rights in the image assets shipped in
+custom_components/tide16/frontend/ or docs/, with the single exception of
+the brand icon listed above.
+
+None of them are original work. They depict third-party hardware and carry
+third-party marks - miniDSP, Dolby, Dolby Atmos, DIRAC / Dirac Live,
+Bluetooth. Their licensing is UNCONFIRMED.
+
+Every one is listed file by file, with what it is and where it came from,
+under "Image assets - what the MIT grant does NOT cover" in README.md.
+
+Recolouring, cropping and background-stripping are edits, not authorship:
+nothing in that list became MIT by being processed here. If you intend to
+redistribute this repository, or to ship it anywhere this matters, either
+confirm each file's own licensing or replace it. The card reads every one
+of them from a path, so substituting your own art is a one-line change per
+file.
+
+
+TRADEMARKS
+----------
+
+The names miniDSP, Tide16, Dolby, Dolby Atmos, DTS:X, DIRAC, Dirac Live,
+HDMI and Bluetooth are trademarks of their respective owners, used here
+only to depict the device this integration controls.
+
+Not affiliated with, endorsed by, or sponsored by miniDSP, Dolby
+Laboratories, Dirac, DTS, HDMI Licensing or Bluetooth SIG.

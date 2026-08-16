@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.1.1 - 2026-08-16
+
+Everything the HACS default-store validation asked for, once it was actually
+run rather than guessed at.
+
+**`dependencies` was missing from the manifest.**  Hassfest caught it: the
+integration uses `http` (to serve the card and the plate art), plus `frontend`
+and `websocket_api`, and declared none of them.  This is not only lint - without
+the declaration there is no guarantee `http` is set up before this integration
+is, and the static path registration is the first thing setup does.
+
+**A brand icon**, at `custom_components/tide16/brand/icon.png`.  Original work,
+drawn by `tools/make_brand_icon.py`: a seven-bar level meter in the card's own
+palette, on transparency so it carries on a light or a dark theme.  It had to be
+drawn rather than taken, because everything else this repo displays belongs to
+somebody else.
+
+**`LICENSE` is now the MIT text and nothing else**, so GitHub can identify it -
+it was reading as `NOASSERTION`, because the scope paragraph at the top of the
+file defeats licence detection.  The scope statement and the image-asset
+exclusions moved to [`NOTICE`](NOTICE), unchanged in substance.  A repo that
+looks unlicensed is worse than one that is carefully licensed and says so
+somewhere a parser can cope with.
+
 ## v2.1.0 - 2026-08-16
 
 **The panel is a card now: `custom:tide16-panel`.**  Add the integration,

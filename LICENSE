@@ -1,13 +1,5 @@
 MIT License
 
-SCOPE: this license covers the SOURCE CODE of this repository only -
-dist/, lovelace/, packages/ and integration/. It does NOT cover the
-image assets in assets/ or docs/. Those depict third-party hardware and
-carry third-party marks (miniDSP, Dolby, Dirac, Bluetooth), are not
-original work, and their licensing is unconfirmed. They are listed
-file-by-file under "Image assets" in README.md. Confirm their licensing
-or replace them before redistributing.
-
 Copyright (c) 2026 speedtoys
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

@@ -426,12 +426,14 @@ plainly even though v2 no longer depends on it.
 
 ### Image assets - what the MIT grant does NOT cover
 
-**The MIT license above applies to the source code only:
-`custom_components/tide16/**/*.py`, the card JS, and `lovelace/`.  It does not grant any
-rights in the image assets.**  Every binary shipped in this repo is
-listed below.  None of them are original artwork, so treat the whole of
-`custom_components/tide16/frontend/` and `docs/` as excluded unless you have confirmed otherwise
-for the file you want.
+See [`NOTICE`](NOTICE) for the full statement.  In short: **the MIT
+license applies to the source code only** - `custom_components/tide16/**/*.py`,
+the card JS, `lovelace/`, `tools/`, and the brand icon.  It does not grant
+any rights in the image assets.  Every binary shipped in this repo is
+listed below.  With the one exception of the brand icon, none of them are
+original artwork, so treat the whole of
+`custom_components/tide16/frontend/` and `docs/` as excluded unless you
+have confirmed otherwise for the file you want.
 
 | File | What it is | Status |
 |---|---|---|
@@ -443,6 +445,7 @@ for the file you want.
 | `custom_components/tide16/frontend/bt.png` | The Bluetooth mark on the pairing control.  Supplied by the repo owner, background-stripped and recoloured here | Third-party mark, provenance unconfirmed.  **Excluded** |
 | `custom_components/tide16/frontend/reboot.png` | The reboot glyph.  Supplied by the repo owner as line art, recoloured and cropped here | Third-party icon art, provenance unconfirmed.  **Excluded** |
 | `custom_components/tide16/frontend/power.png` | The standby glyph, recoloured to match the reboot one | Provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/brand/icon.png`, `…/icon@2x.png` | The brand icon: a seven-bar level meter, drawn from scratch by `tools/make_brand_icon.py` in the card's own palette | **Original work.  MIT, like the code** |
 | `docs/screenshot.png` | A photograph-equivalent render of the running card | Contains every mark above.  **Excluded** |
 
 Recolouring, cropping and background-stripping are edits, not authorship:
@@ -450,7 +453,7 @@ nothing in that table became MIT by being processed here.  If you intend
 to redistribute this repo, or to ship it anywhere the above matters,
 either confirm each file's own licensing or replace it - the card reads
 every one of them from a path in the YAML, so substituting your own art
-is a one-line change per file and nothing in `dist/` needs touching.
+is a one-line change per file.
 
 The names miniDSP, Tide16, Dolby, Dolby Atmos, DTS:X, DIRAC, Dirac Live,
 HDMI and Bluetooth are trademarks of their respective owners, used here
