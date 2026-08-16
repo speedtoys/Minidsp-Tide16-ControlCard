@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.1.2 - 2026-08-16
+
+Housekeeping, and the release the HACS submission points at.
+
+**The workflows are hardened.**  `actions/checkout` v4 to v7 - v4 targets
+Node 20, which GitHub is retiring, so the runner was forcing it onto Node 24
+and warning on every run.  Both jobs now take an explicit read-only token:
+neither validation writes anything, and the job was inheriting whatever the
+repository's default Actions permission happened to be.
+
+**Why a release for that.**  The HACS submission checklist asks for a release
+created *after* the validations pass, and v2.1.1 predates the first all-green
+HACS run - the topics that turned it green are repository metadata, so nothing
+in the v2.1.1 tag was wrong, but the ordering the checklist asks for was not
+there.  Now it is.
+
+No change to the integration, the card or the panel.
+
 ## v2.1.1 - 2026-08-16
 
 Everything the HACS default-store validation asked for, once it was actually
