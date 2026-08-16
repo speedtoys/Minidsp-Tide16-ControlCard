@@ -4,18 +4,21 @@
 .DS_Store
 Thumbs.db
 
-# Node (not required to build - dist/ is committed on purpose, HACS
-# serves it directly - but keep the cruft out if anyone adds tooling)
+# Node (nothing here needs building - the card ships as source inside
+# custom_components/tide16/frontend/ - but keep the cruft out if anyone
+# ever adds tooling)
 node_modules/
 *.log
 
 # Source text for the packed idle table - keep it out of the repo, or the
-# whole point of packing it is lost. Ship only the blob in dist/.
+# whole point of packing it is lost. Ship only the packed blob.
 quotes.txt
 
 # The packer explains what the idle blob contains, which defeats the point
-# of packing it. Kept local; the blob in dist/ is all the card needs.
-tools/
+# of packing it. Kept local - the packed blob is all the card needs.
+# Note this is the one file, NOT tools/: the rest of tools/ ships, because
+# check_layout_sync.py is a release step anyone should be able to run.
+tools/pack_strings.py
 
 # Python bytecode from the integration
 __pycache__/

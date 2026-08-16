@@ -2186,14 +2186,1125 @@ if (!customElements.get('tide16-inputs')) {
   customElements.define('tide16-inputs', Tide16Inputs);
 }
 
+/**
+ * tide16-panel - the whole front panel, as ONE card.
+ *
+ * The seven elements above are picture-elements *elements*: each one needs a
+ * box measured off the plate, and wiring them by hand is the 1000-line view
+ * this repo used to ask people to paste. This card is that view, carried
+ * inside the module and rendered on demand, so adding the panel to a
+ * dashboard is one line - or two clicks, since it registers itself in the
+ * card picker.
+ *
+ * Three things it deliberately does NOT do the way the pasted view did:
+ *
+ * 1. No card-mod. The view needed it to reach ha-card and turn on
+ *    container-type (without which every cqw font silently resolves against
+ *    the VIEWPORT instead of the card) and to strip the card chrome. Here
+ *    the container lives on our own wrapper, and the chrome is switched off
+ *    through ha-card's inherited custom properties - both of which cross the
+ *    shadow boundary on their own. Nothing is pierced, and the last
+ *    third-party dependency is gone.
+ *
+ * 2. Width, not transform. The old view shrank the plate with scale(0.75)
+ *    because card-mod could not change how wide a panel view made the card,
+ *    and a transform leaves the layout box at full size - so the card kept a
+ *    band of dead space under the art, which is why the outline once
+ *    appeared to float below the plate. Owning the box, `scale` is just a
+ *    width, and the layout follows the art exactly.
+ *
+ * 3. It reports columns: full to a sections view. The plate is 1990x400,
+ *    very nearly 5:1, and in a default-width section it would render as a
+ *    letterbox slot too small to read.
+ *
+ * Options, both optional:
+ *   scale    0-1, the fraction of the available width to use. Default 1.
+ *   outline  CSS outline around the plate. Defaults to the 2px white one the
+ *            panel has always had; set it to none to drop it.
+ */
+
+const PANEL_LAYOUT = {
+    "type": "picture-elements",
+    "image": "/tide16_static/plate-v2.png",
+    "elements": [
+      {
+        "type": "custom:tide16-bars",
+        "style": {
+          "left": "17.739%",
+          "top": "21.500%",
+          "width": "15.628%",
+          "height": "29.250%",
+          "transform": "translate(0, 0)",
+          "pointer-events": "none"
+        }
+      },
+      {
+        "type": "custom:tide16-channels",
+        "entity": "sensor.tide16_channel_names_held",
+        "attribute": "channel_names",
+        "font_size": "0.78cqw",
+        "gap": "0.88cqw",
+        "color": "#FFFFFF",
+        "index_color": "#B7B8B8",
+        "label_color": "#B7B8B8",
+        "style": {
+          "left": "0.854%",
+          "top": "86.375%",
+          "width": "66%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-buttons",
+        "ratio": "7 / 2",
+        "gap": "1.190cqw",
+        "title": "Scenes:",
+        "title_size": "1.070cqw",
+        "title_gap": "1.190cqw",
+        "buttons": [
+          {
+            "color": "#D93A2B",
+            "hint": "Recall red scene",
+            "tap": {
+              "action": "button.press",
+              "data": {
+                "entity_id": "button.tide16_scene_red"
+              }
+            }
+          },
+          {
+            "color": "#2FA84F",
+            "hint": "Recall green scene",
+            "tap": {
+              "action": "button.press",
+              "data": {
+                "entity_id": "button.tide16_scene_green"
+              }
+            }
+          },
+          {
+            "color": "#E8C22E",
+            "hint": "Recall yellow scene",
+            "tap": {
+              "action": "button.press",
+              "data": {
+                "entity_id": "button.tide16_scene_yellow"
+              }
+            }
+          },
+          {
+            "color": "#2F6FD0",
+            "hint": "Recall blue scene",
+            "tap": {
+              "action": "button.press",
+              "data": {
+                "entity_id": "button.tide16_scene_blue"
+              }
+            }
+          }
+        ],
+        "style": {
+          "left": "42.513%",
+          "top": "36.473%",
+          "width": "3.216%",
+          "height": "36.047%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Profiles",
+        "title_image": "/tide16_static/dolby.png?v=1",
+        "title_image_alt": "Dolby",
+        "title_size": "1.070cqw",
+        "title_color": "#BFC0C0",
+        "title_gap": "0",
+        "align": "center",
+        "style": {
+          "left": "46.181%",
+          "top": "25.225%",
+          "width": "10.201%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-inputs",
+        "columns": 1,
+        "rows": 4,
+        "row_gap": "1.190cqw",
+        "dot": "1.005cqw",
+        "dot_gap": "0.402cqw",
+        "size": "0.804cqw",
+        "weight": "400",
+        "color": "#B7B8B8",
+        "active_entity": "select.tide16_dolby_profile",
+        "active_attribute": null,
+        "active_color": "#FFFFFF",
+        "active_background": "#32CD32",
+        "active_border": "1px solid #FFFFFF",
+        "active_weight": "700",
+        "items": [
+          {
+            "text": "Movie",
+            "value": "movie",
+            "hint": "Set Dolby profile: Movie",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_dolby_profile",
+                "option": "movie"
+              }
+            }
+          },
+          {
+            "text": "Music",
+            "value": "music",
+            "hint": "Set Dolby profile: Music",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_dolby_profile",
+                "option": "music"
+              }
+            }
+          },
+          {
+            "text": "Night",
+            "value": "night",
+            "hint": "Set Dolby profile: Night",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_dolby_profile",
+                "option": "night"
+              }
+            }
+          },
+          {
+            "text": "Off",
+            "value": "off",
+            "hint": "Turn the Dolby profile off",
+            "tap": {
+              "action": "select.select_option",
+              "data": {
+                "entity_id": "select.tide16_dolby_profile",
+                "option": "off"
+              }
+            }
+          }
+        ],
+        "style": {
+          "left": "49.121%",
+          "top": "36.473%",
+          "width": "4.472%",
+          "height": "36.047%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "3.176cqw",
+        "color": "#E7E8E8",
+        "row_gap": "0",
+        "align": "right",
+        "rows": [
+          {
+            "entity": "sensor.tide16_volume_integer",
+            "placeholder": "-.-"
+          }
+        ],
+        "style": {
+          "right": "86.231%",
+          "left": "unset",
+          "top": "24.189%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.673cqw",
+        "color": "#DFE0E0",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_volume_decimal",
+            "prefix": ".",
+            "placeholder": ""
+          }
+        ],
+        "style": {
+          "left": "14.070%",
+          "top": "30.259%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.141cqw",
+        "color": "#B7B8B8",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_source"
+          }
+        ],
+        "style": {
+          "left": "6.734%",
+          "top": "49.929%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.216cqw",
+        "color": "#BFC0C0",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_speaker_config"
+          }
+        ],
+        "style": {
+          "left": "25.879%",
+          "top": "64.723%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "0.844cqw",
+        "row_gap": "0.010cqw",
+        "rows": [
+          {
+            "label": "Rate:",
+            "entity": "sensor.tide16_stream",
+            "attribute": "sample_rate"
+          },
+          {
+            "label": "Decoder:",
+            "entity": "sensor.tide16_stream",
+            "attribute": "decoder_type"
+          },
+          {
+            "label": "Stream:",
+            "entity": "sensor.tide16_stream"
+          }
+        ],
+        "style": {
+          "left": "6.784%",
+          "top": "63.651%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "0.724cqw",
+        "color": "#332050",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_status"
+          }
+        ],
+        "style": {
+          "left": "18.010%",
+          "top": "60.320%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.075cqw",
+        "color": "#BFC0C0",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_sample_rate_khz"
+          }
+        ],
+        "style": {
+          "left": "25.879%",
+          "top": "71.431%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Preset",
+        "title_size": "0.844cqw",
+        "title_gap": "0",
+        "style": {
+          "left": "34.372%",
+          "top": "58.726%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.216cqw",
+        "color": "#BFC0C0",
+        "row_gap": "0",
+        "rows": [
+          {
+            "entity": "sensor.tide16_preset",
+            "attribute": "preset_index"
+          }
+        ],
+        "style": {
+          "left": "34.372%",
+          "top": "64.723%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "1.075cqw",
+        "color": "#BFC0C0",
+        "row_gap": "0",
+        "scroll": true,
+        "rows": [
+          {
+            "entity": "sensor.tide16_preset"
+          }
+        ],
+        "style": {
+          "left": "34.372%",
+          "top": "71.431%",
+          "width": "6.332%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "binary_sensor.tide16_atmos",
+            "state": "on"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/dolby-atmos.png",
+            "style": {
+              "left": "34.698%",
+              "top": "23.938%",
+              "width": "5.226%",
+              "transform": "translate(0, 0)",
+              "filter": "brightness(0.91)",
+              "pointer-events": "none"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "switch.tide16_dirac_live",
+            "state": "on"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/dirac-a.png",
+            "tap_action": {
+              "action": "perform-action",
+              "perform_action": "switch.toggle",
+              "target": {
+                "entity_id": "switch.tide16_dirac_live"
+              }
+            },
+            "style": {
+              "left": "35.930%",
+              "top": "37.975%",
+              "width": "2.764%",
+              "transform": "translate(0, 0)",
+              "cursor": "pointer"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "switch.tide16_dirac_live",
+            "state_not": "on"
+          }
+        ],
+        "elements": [
+          {
+            "type": "image",
+            "image": "/tide16_static/dirac-a.png",
+            "tap_action": {
+              "action": "perform-action",
+              "perform_action": "switch.toggle",
+              "target": {
+                "entity_id": "switch.tide16_dirac_live"
+              }
+            },
+            "style": {
+              "left": "35.930%",
+              "top": "37.975%",
+              "width": "2.764%",
+              "transform": "translate(0, 0)",
+              "filter": "grayscale(1) brightness(0.496)",
+              "cursor": "pointer"
+            }
+          }
+        ]
+      },
+      {
+        "type": "conditional",
+        "conditions": [
+          {
+            "entity": "switch.tide16_mute",
+            "state": "on"
+          }
+        ],
+        "elements": [
+          {
+            "type": "custom:tide16-readout",
+            "title": "Mute",
+            "title_color": "#D93A2B",
+            "title_size": "0.894cqw",
+            "title_gap": "0",
+            "align": "right",
+            "style": {
+              "right": "60.302%",
+              "left": "unset",
+              "top": "32.847%",
+              "transform": "translate(0, 0)"
+            }
+          }
+        ]
+      },
+      {
+        "type": "custom:tide16-inputs",
+        "columns": 6,
+        "rows": 2,
+        "row_gap": "0.503cqw",
+        "dot": "0.854cqw",
+        "dot_gap": "0.302cqw",
+        "size": "0.804cqw",
+        "color": "#B7B8B8",
+        "active_entity": "media_player.tide16",
+        "active_attribute": "source",
+        "active_color": "#FFFFFF",
+        "active_background": "#32CD32",
+        "active_border": "1px solid #FFFFFF",
+        "active_size": "0.954cqw",
+        "background": "#333333",
+        "border": "1px solid #666666",
+        "source_entity": "media_player.tide16",
+        "source_attribute": "sources",
+        "disabled_color": "#5E5F5F",
+        "disabled_background": "#1F1F1F",
+        "disabled_border": "1px solid #3A3A3A",
+        "items": [
+          {
+            "text": "AppleTV",
+            "id": "hdmi2",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "AppleTV"
+              }
+            }
+          },
+          {
+            "text": "ARC / eARC",
+            "id": "arc_earc",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "ARC / eARC"
+              }
+            }
+          },
+          {
+            "text": "Bluetooth",
+            "id": "bluetooth",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "Bluetooth"
+              }
+            }
+          },
+          {
+            "text": "BR-DVD",
+            "id": "hdmi3",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "BR-DVD"
+              }
+            }
+          },
+          {
+            "text": "RCA",
+            "id": "rca",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "RCA"
+              }
+            }
+          },
+          {
+            "text": "Roku",
+            "id": "hdmi1",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "Roku"
+              }
+            }
+          },
+          {
+            "text": "SPDIF 1",
+            "id": "spdif1",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "SPDIF 1"
+              }
+            }
+          },
+          {
+            "text": "SPDIF 2",
+            "id": "spdif2",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "SPDIF 2"
+              }
+            }
+          },
+          {
+            "text": "TOSLINK 1",
+            "id": "toslink1",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "TOSLINK 1"
+              }
+            }
+          },
+          {
+            "text": "TOSLINK 2",
+            "id": "toslink2",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "TOSLINK 2"
+              }
+            }
+          },
+          {
+            "text": "USB",
+            "id": "usb",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "USB"
+              }
+            }
+          },
+          {
+            "text": "XLR",
+            "id": "xlr",
+            "tap": {
+              "action": "media_player.select_source",
+              "data": {
+                "entity_id": "media_player.tide16",
+                "source": "XLR"
+              }
+            }
+          }
+        ],
+        "style": {
+          "left": "17.487%",
+          "top": "3.250%",
+          "width": "50.804%",
+          "height": "13.000%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-glyph",
+        "image": "/tide16_static/bt.png",
+        "hint": "Pair a Bluetooth device",
+        "tap": {
+          "action": "button.press",
+          "data": {
+            "entity_id": "button.tide16_bluetooth_pair"
+          }
+        },
+        "style": {
+          "left": "64.221%",
+          "top": "3.750%",
+          "width": "2.412%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "PAIR",
+        "title_size": "0.804cqw",
+        "title_color": "#B7B8B8",
+        "title_gap": "0",
+        "align": "center",
+        "style": {
+          "left": "64.221%",
+          "top": "16.750%",
+          "width": "2.412%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-glyph",
+        "image": "/tide16_static/power.png",
+        "hint": "Power off the Tide16",
+        "tap": {
+          "action": "media_player.turn_off",
+          "data": {
+            "entity_id": "media_player.tide16"
+          }
+        },
+        "color_entity": "media_player.tide16",
+        "color_on": "#B300FF",
+        "color_off": "#F52727",
+        "style": {
+          "left": "56.681%",
+          "top": "43.938%",
+          "width": "2.316%",
+          "height": "12.375%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-glyph",
+        "image": "/tide16_static/reboot.png",
+        "hint": "Reboot the Tide16",
+        "tap": {
+          "action": "button.press",
+          "data": {
+            "entity_id": "button.tide16_reboot"
+          }
+        },
+        "color": "#BFC0C0",
+        "busy_colors": [
+          "#B300FF",
+          "#F52727"
+        ],
+        "busy_interval": 1000,
+        "busy_min_steps": 5,
+        "busy_timeout": 60000,
+        "busy_entity": "media_player.tide16",
+        "busy_live_states": [
+          "on"
+        ],
+        "button": true,
+        "icon_scale": 0.688,
+        "style": {
+          "left": "64.221%",
+          "top": "79.250%",
+          "width": "2.412%",
+          "height": "12.000%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "Reboot",
+        "title_size": "0.804cqw",
+        "title_color": "#B7B8B8",
+        "title_gap": "0",
+        "align": "center",
+        "style": {
+          "left": "64.221%",
+          "top": "92.250%",
+          "width": "2.412%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-knob-labels",
+        "gap": "0.458cqw",
+        "color": "#000",
+        "size": "1.012cqw",
+        "weight": "700",
+        "labels": [
+          {
+            "at": 12,
+            "text": [
+              "Mute:",
+              "On"
+            ],
+            "hint": "Mute on",
+            "tap": {
+              "action": "switch.turn_on",
+              "data": {
+                "entity_id": "switch.tide16_mute"
+              }
+            }
+          },
+          {
+            "at": 6,
+            "text": [
+              "Mute:",
+              "Off"
+            ],
+            "hint": "Mute off",
+            "tap": {
+              "action": "switch.turn_off",
+              "data": {
+                "entity_id": "switch.tide16_mute"
+              }
+            }
+          },
+          {
+            "at": 3,
+            "text": "Vol:+10",
+            "hint": "Volume up 10 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": 10
+              }
+            }
+          },
+          {
+            "at": 4.5,
+            "text": "Vol:+20",
+            "hint": "Volume up 20 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": 20
+              }
+            }
+          },
+          {
+            "at": 2,
+            "text": "Vol:+5",
+            "hint": "Volume up 5 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": 5
+              }
+            }
+          },
+          {
+            "at": 1,
+            "text": "Vol:+2",
+            "hint": "Volume up 2 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": 2
+              }
+            }
+          },
+          {
+            "at": 11,
+            "text": "Vol:-2",
+            "hint": "Volume down 2 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": -2
+              }
+            }
+          },
+          {
+            "at": 10,
+            "text": "Vol:-5",
+            "hint": "Volume down 5 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": -5
+              }
+            }
+          },
+          {
+            "at": 9,
+            "text": "Vol:-10",
+            "hint": "Volume down 10 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": -10
+              }
+            }
+          },
+          {
+            "at": 7.5,
+            "text": "Vol:-20",
+            "hint": "Volume down 20 dB",
+            "tap": {
+              "action": "tide16.volume_step",
+              "data": {
+                "delta": -20
+              }
+            }
+          }
+        ],
+        "style": {
+          "left": "78.794%",
+          "top": "22.375%",
+          "width": "11.357%",
+          "height": "56.500%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "size": "0.980cqw",
+        "color": "#000",
+        "row_gap": "0.150cqw",
+        "rows": [
+          {
+            "label": "Tide FW:",
+            "entity": "sensor.tide16_versions",
+            "attribute": "tide"
+          },
+          {
+            "label": "HDMI FW:",
+            "entity": "sensor.tide16_versions",
+            "attribute": "hdmi"
+          }
+        ],
+        "style": {
+          "left": "69.397%",
+          "top": "86.000%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-readout",
+        "title": "v2.1.0",
+        "title_size": "0.980cqw",
+        "title_color": "#000",
+        "title_gap": "0",
+        "align": "right",
+        "style": {
+          "right": "0.854%",
+          "left": "unset",
+          "top": "91.625%",
+          "width": "4.020%",
+          "transform": "translate(0, 0)"
+        }
+      }
+    ]
+  };
+
+class Tide16Panel extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: 'open' });
+    this._token = 0;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    this._card = null;
+    this.shadowRoot.innerHTML = '';
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._card) this._card.hass = hass;
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  async _render() {
+    // _render is async, and setConfig can land again before it finishes.
+    // The token is what stops a superseded run from appending its card into
+    // a wrapper that is no longer in the tree.
+    const token = ++this._token;
+    const asked = Number(this._config.scale);
+    const scale = Number.isFinite(asked) && asked > 0 ? Math.min(asked, 1) : 1;
+    const outline =
+      this._config.outline === undefined ? '2px solid #FFFFFF' : this._config.outline;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      :host {
+        display: block;
+      }
+      .wrap {
+        /* The whole reason this element exists rather than a bare
+           picture-elements card: every font on the panel is sized in cqw,
+           and cqw only means "percent of the card" if something declares
+           itself a container. Container queries resolve through shadow
+           boundaries, so declaring it here reaches the elements inside the
+           picture-elements card without touching that card at all. */
+        container-type: inline-size;
+        margin: 0 auto;
+        /* Clips the square-cornered plate to the rounded box, so the outline
+           traces a rounded card around a rounded image instead of cutting
+           across four square corners. */
+        overflow: hidden;
+        border-radius: var(--ha-card-border-radius, 12px);
+        /* Inherited custom properties, so they reach the ha-card inside the
+           picture-elements shadow root without piercing it. Without them the
+           plate sits on a second, visible card - theme background, border
+           and shadow around the artwork. */
+        --ha-card-background: transparent;
+        --ha-card-box-shadow: none;
+        --ha-card-border-width: 0;
+        --ha-card-border-radius: 0;
+      }
+    `;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'wrap';
+    wrap.style.width = `${(scale * 100).toFixed(4)}%`;
+    wrap.style.outline = outline;
+    this.shadowRoot.append(style, wrap);
+
+    let card;
+    try {
+      const helpers = await window.loadCardHelpers();
+      if (token !== this._token) return;
+      // Deep clone. A Lovelace card deep-freezes the config it is handed,
+      // and PANEL_LAYOUT is module state - freezing it would break every
+      // later instance of this card on the page.
+      card = helpers.createCardElement(JSON.parse(JSON.stringify(PANEL_LAYOUT)));
+    } catch (err) {
+      if (token !== this._token) return;
+      wrap.textContent = `Tide16 panel failed to build: ${err}`;
+      return;
+    }
+
+    if (this._hass) card.hass = this._hass;
+    wrap.appendChild(card);
+    this._card = card;
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  getGridOptions() {
+    // 1990x400 of artwork. A sections view hands a card four columns by
+    // default, which would letterbox the plate to about 340px wide.
+    return { columns: 'full', min_columns: 6, rows: 'auto' };
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+}
+
+if (!customElements.get('tide16-panel')) {
+  customElements.define('tide16-panel', Tide16Panel);
+}
+
+window.customCards = window.customCards || [];
+if (!window.customCards.some((c) => c.type === 'tide16-panel')) {
+  window.customCards.push({
+    type: 'tide16-panel',
+    name: 'miniDSP Tide16 Panel',
+    description:
+      'The Tide16 front panel - live 16-channel meter, source selector, scenes, volume and every readout.',
+    preview: true,
+    documentationURL: 'https://github.com/speedtoys/Minidsp-Tide16-ControlCard',
+  });
+}
+
+/**
+ * Register with whichever registry the frontend actually ends up using.
+ *
+ * The integration serves this module through frontend.add_extra_js_url, and
+ * Home Assistant imports it at about 60ms - well before its own bundle
+ * installs the scoped custom element registry that REPLACES
+ * window.customElements. Everything defined above therefore lands in the
+ * NATIVE registry.
+ *
+ * The browser still upgrades those tags wherever they appear, which is why
+ * the seven picture-elements elements have always worked. But the frontend
+ * looks a CARD up in the replacement registry, so a card registered only
+ * natively answers "Custom element doesn't exist" and the view renders a
+ * Configuration error instead. Nothing above this line is enough on its own.
+ *
+ * So: register now, and register again if the registry is swapped out from
+ * under us. A fresh subclass each time - a constructor may only be used once
+ * per registry, and this is the same class going into a second one.
+ */
+
+const TIDE16_ELEMENTS = [
+  ['tide16-bars', Tide16Bars],
+  ['tide16-channels', Tide16Channels],
+  ['tide16-buttons', Tide16Buttons],
+  ['tide16-glyph', Tide16Glyph],
+  ['tide16-knob-labels', Tide16KnobLabels],
+  ['tide16-readout', Tide16Readout],
+  ['tide16-inputs', Tide16Inputs],
+  ['tide16-panel', Tide16Panel],
+];
+
+const tide16Register = (registry) => {
+  TIDE16_ELEMENTS.forEach(([name, cls]) => {
+    if (registry.get(name)) return;
+    try {
+      registry.define(name, class extends cls {});
+    } catch (err) {
+      console.warn(`TIDE16: could not register <${name}>`, err);
+    }
+  });
+};
+
+const tide16FirstRegistry = window.customElements;
+tide16Register(tide16FirstRegistry);
+
+// ha-card is the frontend's own, so its absence means this is not the
+// frontend's registry yet and a swap is still to come. Bounded: a page that
+// never swaps is a page where the first registration was already the right
+// one, and a timer must not outlive that answer.
+if (!tide16FirstRegistry.get('ha-card')) {
+  let waited = 0;
+  const poll = setInterval(() => {
+    waited += 200;
+    if (window.customElements !== tide16FirstRegistry) {
+      tide16Register(window.customElements);
+      clearInterval(poll);
+    } else if (waited >= 30000) {
+      clearInterval(poll);
+    }
+  }, 200);
+}
+
 // Bumped with the repo tag. Printed on load so a stale cached copy is
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.0.0';
+const TIDE16_VERSION = '2.1.0';
 
 console.info(
-  `%c TIDE16 ${TIDE16_VERSION} %c meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
+  `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
   'color:#0b1013;background:#ABACAC;font-weight:700',
   'color:#ABACAC;background:#0b1013'
 );

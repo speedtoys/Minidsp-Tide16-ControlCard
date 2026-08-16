@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.1.0 - 2026-08-16
+
+**The panel is a card now: `custom:tide16-panel`.**  Add the integration,
+then Edit dashboard > Add card > "miniDSP Tide16 Panel".  It can be dropped
+into a section, a masonry view or a panel view, and it reports `columns:
+full` to a sections view so the 5:1 plate is not letterboxed.  The thousand
+lines of measured element boxes that v2.0.0 asked you to paste now travel
+inside the module, which also means a release can fix the geometry - a
+dashboard someone pasted cannot be.
+
+**Fixes the panel, which v2.0.0 broke.**  On v2.0.0 every element on the
+plate renders as `Configuration error`.  The integration serves the module
+through `add_extra_js_url`, which Home Assistant imports about 60ms into the
+page - before its own bundle **replaces** `window.customElements` with a
+scoped registry.  Everything therefore registered against the native
+registry.  The browser still upgrades those tags where they already sit in
+the DOM, which is why this looked fine in v1.x when the module was a
+Lovelace resource loaded late, but the frontend looks an element up in the
+*replacement* registry, so nothing it had to create by name existed.  The
+module now registers again if the registry is swapped out under it.
+
+**card-mod is no longer a dependency.**  It was there for two things: turning
+on `container-type` (without which every `cqw` font on the panel silently
+resolves against the viewport instead of the card) and stripping ha-card's
+background, border and shadow.  The card declares its own container, and
+switches the chrome off through ha-card's inherited custom properties - both
+cross the shadow boundary without reaching into it.
+
+**`scale` is a width, not a transform.**  The old view scaled the plate with
+`transform: scale(0.75)`, which shrinks the paint but not the layout box, so
+the card kept a band of dead space underneath.  Now the layout follows the
+art.
+
+`docs/panel-layout.annotated.yaml` keeps the derivation of every percentage -
+what each box was anchored to on the artwork, and why.  `tools/build_layout.py`
+writes the card's copy from it and `tools/check_layout_sync.py` proves the two
+still agree, which is a release step.
+
 ## v2.0.0 - 2026-08-15
 
 **This repo is an integration now.**  It speaks the Tide16's WebSocket API

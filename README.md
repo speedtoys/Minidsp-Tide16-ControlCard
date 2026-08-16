@@ -17,8 +17,9 @@ assigned and the legend names them; yours will show your own layout.*
 |---|---|
 | `custom_components/tide16/` | The integration: a WebSocket client for the Tide16, every entity the panel needs, and the card itself |
 | `custom_components/tide16/api/` | The protocol on its own, with no Home Assistant imports - runnable from a terminal |
-| `custom_components/tide16/frontend/` | Seven `picture-elements` **elements**, not a standalone card, plus the plate and glyphs.  Served by the integration at `/tide16_static/` |
-| `lovelace/tide16-panel.yaml` | The complete view: meter, source selector, scenes, volume ring, every live readout |
+| `custom_components/tide16/frontend/` | The card - `custom:tide16-panel` - plus the seven `picture-elements` elements it is built from, the plate and the glyphs.  Served by the integration at `/tide16_static/` |
+| `lovelace/tide16-panel.yaml` | An example view, for the dedicated full-page look.  Not needed to use the card |
+| `docs/panel-layout.annotated.yaml` | Where every element box on the plate is measured and explained.  The card carries the same geometry as data; `tools/build_layout.py` writes it and `tools/check_layout_sync.py` proves the two agree |
 
 ## Install
 
@@ -26,17 +27,38 @@ assigned and the legend names them; yours will show your own layout.*
 
 1. HACS > ⋮ > Custom repositories > `https://github.com/speedtoys/Minidsp-Tide16-ControlCard`, type **Integration**.  Download it and restart.
 2. Settings > Devices & services > Add integration > **miniDSP Tide16**.  Give it the unit's address.
-3. Paste [`lovelace/tide16-panel.yaml`](lovelace/) into a dashboard as a panel-mode view.
+3. On any dashboard: Edit > Add card > **miniDSP Tide16 Panel**.
 
-That's it.  The card and the plate art are registered by the integration,
-so there is no Lovelace resource to add, nothing to copy into `www/`, and
-no `?v=` cache-buster to bump - the module URL carries the integration's
-own version.
+That's it.  There is no Lovelace resource to add, nothing to copy into
+`www/`, no YAML to paste and no `?v=` cache-buster to bump - the
+integration serves the card and the plate art itself, and the module URL
+carries its own version.
 
-The view uses [card-mod](https://github.com/thomasloven/lovelace-card-mod)
-for the `scale()` wrapper that fits the plate to the page.  Delete that
-`card_mod` block if you'd rather not have the dependency; the panel just
-renders full width.
+The card goes wherever you want it: a section of a sections view, a
+normal masonry view, or a panel view of its own.  In a sections view it
+asks for the full width - the plate is very nearly 5:1, and a
+default-width section would letterbox it into something unreadable.
+
+There are no third-party dependencies.  **card-mod is no longer needed**
+- v2.1.0 moved the container and the card-chrome overrides into the card
+itself.
+
+Two options, both optional:
+
+```yaml
+type: custom:tide16-panel
+scale: 0.75      # fraction of the available width. Default 1.
+outline: none    # CSS outline around the plate. Default "2px solid #FFFFFF".
+```
+
+`scale` is a width, not a `transform`: the layout follows the artwork, so
+there is no band of dead space under a shrunken plate.  It earns its keep
+in a panel view, which hands the card the whole window; in a section, the
+section has already decided how wide the card is.
+
+For the dedicated full-page view the screenshot was taken on, paste
+[`lovelace/tide16-panel.yaml`](lovelace/) into a dashboard - it is a dozen
+lines now.
 
 ### Upgrading from v1.x
 
@@ -63,8 +85,12 @@ exclusion is gone.
 
 ## The elements
 
-All seven live in the one JS file and are used the same way: as elements
-inside a `picture-elements` card, each framed by its own box.
+The panel card is the supported way in, and everything below is what it is
+made of.  Reach for these directly only if you are building your own
+layout on the plate.
+
+All eight live in the one JS file.  Seven of them are used the same way:
+as elements inside a `picture-elements` card, each framed by its own box.
 
 ```yaml
 type: picture-elements
@@ -88,6 +114,24 @@ box up and to the left of where you put it.
 percent of the card's width - so the whole panel scales together at any
 display size.  On the bundled 1990x400 plate, 1 canvas px ≈ 0.0503 cqw.
 Moving or resizing a box changes spacing, never proportions.
+
+### `custom:tide16-panel` - the whole panel
+
+The one that goes on a dashboard.  It carries the complete measured layout
+and builds a real `picture-elements` card from it, so what you get is the
+panel in the screenshot, from one line of config.
+
+```yaml
+type: custom:tide16-panel
+```
+
+It registers itself in the card picker, reports `columns: full` to a
+sections view, and needs no other card installed.
+
+**Why it is a card and not a view you paste.**  A thousand lines of
+measured boxes in someone's dashboard config is a thousand lines that
+cannot be fixed by an update.  Carried in the module, the geometry ships
+with the integration and a release can correct it.
 
 ### `tide16-bars` - the 16-channel meter
 
