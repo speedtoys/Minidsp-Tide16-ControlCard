@@ -8,7 +8,7 @@ device.
 
 ![the Tide16 panel, live](docs/screenshot.png)
 
-*My system, mid-session, meter live.  It runs 7.2.2, so 11 outputs are
+*My system, mid-session, meter live.  It runs 7.2.4, so 13 outputs are
 assigned and the legend names them; yours will show your own layout.*
 
 ## What's here
