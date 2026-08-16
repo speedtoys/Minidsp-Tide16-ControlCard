@@ -3100,7 +3100,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.1.2",
+        "title": "v2.2.0",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3301,7 +3301,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.1.2';
+const TIDE16_VERSION = '2.2.0';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

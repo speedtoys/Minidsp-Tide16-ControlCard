@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.2.0 - 2026-08-16
+
+**Setup finds the unit for you.**  Open the integration and it sweeps the local
+subnet for anything listening on the Tide16's port, then opens a WebSocket to
+each and asks `get_settings` - so what you get offered is a unit that identified
+itself, not an address that happened to have a port open.  A /24 takes about a
+second and a half.
+
+**Why a sweep and not discovery.**  Measured on a live unit: it answers no SSDP
+and advertises no mDNS service.  The only name it has on a network is whatever
+that network's DHCP server chose to call it, which is a fact about the network
+rather than the device - useless for recognising one anywhere else.  There is
+simply nothing for Home Assistant's own discovery to catch, so the integration
+goes and asks.
+
+**Typing the address still works, and always will.**  The list is a shortcut,
+not a restriction: the host field takes a free-typed address for a unit on
+another subnet.  The sweep is bounded to networks of 512 addresses or fewer -
+on anything larger it is skipped rather than turned into a network scan.
+
+**When nothing is found it says why.**  A Tide16 in standby leaves the network
+entirely, so an empty result is ordinary rather than an error, and the form says
+so: switch it on and try again, or type the address.
+
+The scan is in the Home-Assistant-free API layer with everything else, so it
+runs from a terminal:
+
+```
+cd custom_components/tide16
+python3 -m api --scan              # this machine's subnet
+python3 -m api --scan 10.0.0.0/24  # another one
+```
+
 ## v2.1.2 - 2026-08-16
 
 Housekeeping, and the release the HACS submission points at.

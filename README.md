@@ -26,7 +26,7 @@ assigned and the legend names them; yours will show your own layout.*
 **One thing, from HACS.**
 
 1. HACS > ⋮ > Custom repositories > `https://github.com/speedtoys/Minidsp-Tide16-ControlCard`, type **Integration**.  Download it and restart.
-2. Settings > Devices & services > Add integration > **miniDSP Tide16**.  Give it the unit's address.
+2. Settings > Devices & services > Add integration > **miniDSP Tide16**.  It sweeps your subnet and offers whatever answers as a Tide16 - pick it, or type an address.
 3. On any dashboard: Edit > Add card > **miniDSP Tide16 Panel**.
 
 That's it.  There is no Lovelace resource to add, nothing to copy into
@@ -59,6 +59,34 @@ section has already decided how wide the card is.
 For the dedicated full-page view the screenshot was taken on, paste
 [`lovelace/tide16-panel.yaml`](lovelace/) into a dashboard - it is a dozen
 lines now.
+
+### Finding the unit
+
+Setup sweeps the local subnet for the Tide16's port, then opens a WebSocket to
+everything that answers and asks `get_settings`.  What you are offered is a
+unit that identified itself, not an address with a port open.  A /24 takes
+about a second and a half; networks larger than 512 addresses are skipped
+rather than swept.
+
+**This is a sweep rather than discovery because the unit announces itself
+nowhere.**  Measured on a live one: no SSDP response, no mDNS service, and its
+only name on a network is whatever that network's DHCP server chose to call it
+- a fact about the network, not the device.  There is nothing for Home
+Assistant's own discovery to catch.
+
+Typing an address always works, for a unit on another subnet.  And if nothing
+is found, the likeliest reason is that the unit is asleep: **a Tide16 in
+standby leaves the network entirely** and cannot be found by anyone until it
+is switched on.
+
+The scan lives in the Home-Assistant-free API layer, so it runs from a
+terminal too:
+
+```
+cd custom_components/tide16
+python3 -m api --scan              # this machine's subnet
+python3 -m api --scan 10.0.0.0/24  # another one
+```
 
 ### Upgrading from v1.x
 

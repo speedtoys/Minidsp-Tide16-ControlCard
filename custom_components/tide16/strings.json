@@ -3,10 +3,14 @@
     "step": {
       "user": {
         "title": "miniDSP Tide16",
-        "description": "The processor answers on port 5555 while it is awake. If setup fails, check it is not in standby.",
+        "description": "{found}",
         "data": {
           "host": "Host",
           "port": "Port"
+        },
+        "data_description": {
+          "host": "Pick a unit found on this network, or type an IP address or hostname.",
+          "port": "The Tide16's WebSocket port. Leave this alone unless you have changed it on the unit."
         }
       }
     },

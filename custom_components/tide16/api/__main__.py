@@ -3,6 +3,8 @@
     cd custom_components/tide16
     python3 -m api 192.168.1.212           # dump state
     python3 -m api 192.168.1.212 --watch   # follow pushes
+    python3 -m api --scan                  # find units on this subnet
+    python3 -m api --scan 10.0.0.0/24      # ...or on another one
 
 This exists to keep the protocol honest: if the integration and this disagree,
 the bug is above the API layer.
@@ -12,10 +14,38 @@ from __future__ import annotations
 
 import asyncio
 import json
+import socket
 import sys
 
 from .client import Tide16Client, Tide16Error
 from .const import REFRESH_ENDPOINTS, GET_RMS_DB
+from .discovery import async_scan, candidate_hosts
+
+
+async def scan(cidr: str | None) -> int:
+    """Sweep a subnet and print what answers as a Tide16."""
+    if cidr is None:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        probe.connect(("8.8.8.8", 80))
+        mine = probe.getsockname()[0]
+        probe.close()
+        cidr = f"{mine}/24"
+        print(f"this machine is {mine}, sweeping {cidr}", file=sys.stderr)
+
+    hosts = candidate_hosts(cidr)
+    if not hosts:
+        print(f"{cidr} is too big to sweep - narrow it to a /24", file=sys.stderr)
+        return 2
+
+    found = await async_scan(hosts)
+    if not found:
+        print("no Tide16 found. A unit in standby is off the network entirely -"
+              " switch it on and try again.")
+        return 1
+    for unit in found:
+        print(f"{unit['host']}:{unit['port']}  firmware {unit['version']}"
+              f"  preset {unit['preset']}")
+    return 0
 
 
 async def main(host: str, watch: bool) -> int:
@@ -64,6 +94,11 @@ async def main(host: str, watch: bool) -> int:
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
+    if "--scan" in sys.argv:
+        try:
+            raise SystemExit(asyncio.run(scan(args[0] if args else None)))
+        except KeyboardInterrupt:
+            raise SystemExit(0)
     if not args:
         print(__doc__, file=sys.stderr)
         raise SystemExit(2)
