@@ -90,11 +90,15 @@
                 gap: 0.88cqw
                 color: '#FFFFFF'
                 index_color: '#B7B8B8'
-                label_color: '#B7B8B8'
+                label_color: '#FFFFFF'
                 style:
                   left: 0.854%
                   top: 86.375%
-                  width: 66%
+                  # Stops at the reboot button (left: 64.221%) rather than at
+                  # the end of the screen area. The row is allowed to use every
+                  # pixel it is given, so a legend long enough to reach the end
+                  # otherwise runs its last entry under that button.
+                  width: 63.3%
                   transform: translate(0, 0)
               # Scene buttons, on the faceplate between the screen (ends
               # x=810) and the standby button (starts x=1102).
@@ -741,7 +745,7 @@
               # One of three stamps that must agree - the others are the
               # manifest version and TIDE16_VERSION in the module.
               - type: custom:tide16-readout
-                title: v2.4.4
+                title: v2.4.5
                 title_size: 0.980cqw
                 title_color: '#000'
                 title_gap: '0'

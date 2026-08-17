@@ -88,6 +88,12 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.levels: list[float] = [SILENCE_DB] * CHANNEL_COUNT
         self._signal = False
 
+        # The two halves of the channel legend, kept apart because they arrive
+        # in separate replies in no fixed order and either one has to be able
+        # to rebuild the merged list on its own.
+        self._speaker_names: dict[int, str] = {}
+        self._custom_port_names: dict[int, str] = {}
+
         self._subscribers = 0
         self._loops: list[asyncio.Task] = []
         self._client = Tide16Client(
@@ -296,12 +302,52 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _apply_output_speakers(self, data: Any) -> None:
         if not isinstance(data, dict) or not data:
             return
-        names = [name for _, name in sorted(data.items(), key=lambda kv: int(kv[0]))]
+        self._speaker_names = {int(k): v for k, v in data.items() if v}
+        self._rebuild_channel_names()
+
+    def _apply_custom_port_names(self, data: Any) -> None:
+        """Names typed into the unit's own web UI, for ports it does not assign.
+
+        `get_output_speakers` only reports what the decoder lays out - 13
+        entries for 7.2.4 - so an output driven by hand through the routing
+        matrix meters correctly and then sits in the legend with no name.  The
+        unit does keep a name for those: `get_custom_out_port_names` is what
+        its own control page writes, and it comes back empty until somebody
+        names something, which is why this looked for a while like the device
+        simply had nothing to offer.
+
+        Unset ports come back as "" and are dropped rather than stored as a
+        blank name, so an untouched unit behaves exactly as before.
+        """
+        if not isinstance(data, dict):
+            return
+        self._custom_port_names = {int(k): v for k, v in data.items() if v}
+        self._rebuild_channel_names()
+
+    def _rebuild_channel_names(self) -> None:
+        """One list from both sources, indexed by output number.
+
+        A custom name wins where there is one: it was typed deliberately,
+        and it is what the unit's own UI shows for that port.
+        """
+        speakers = self._speaker_names
+        custom = self._custom_port_names
+        if not speakers and not custom:
+            return
+        top = max([*speakers, *custom])
+        names = [custom.get(i) or speakers.get(i) or None for i in range(1, top + 1)]
+        while names and names[-1] is None:
+            names.pop()
         self.data["channel_names"] = names
+        # Which of those are somebody's own words rather than the decoder's
+        # enum, so the legend knows which ones not to abbreviate.
+        chosen = sorted(n for n in custom if n <= len(names))
+        self.data["custom_channels"] = chosen
         # Held across a dropout: the legend under the meter should keep naming
         # the speakers while the unit is away, rather than emptying out.
         if names:
             self.data["channel_names_held"] = names
+            self.data["custom_channels_held"] = chosen
 
     def _apply_dirac(self, data: Any) -> None:
         if isinstance(data, dict):
@@ -393,6 +439,7 @@ def _blank() -> dict[str, Any]:
         # deliberately NOT cleared by _blank()'s callers on disconnect - see
         # _apply_output_speakers
         "channel_names_held": [],
+        "custom_channels_held": [],
         "dirac": {},
         "dirac_measuring": None,
         "bluetooth": {},
@@ -414,6 +461,7 @@ _REPLY_APPLIERS = {
     "get_all_presets": Tide16Coordinator._apply_presets,
     "get_speaker_config_number": Tide16Coordinator._apply_speaker_config,
     "get_output_speakers": Tide16Coordinator._apply_output_speakers,
+    "get_custom_out_port_names": Tide16Coordinator._apply_custom_port_names,
     "get_dirac_state": Tide16Coordinator._apply_dirac,
     "get_dirac_measuring_mode": Tide16Coordinator._apply_dirac_measuring,
     "get_bluetooth_status": Tide16Coordinator._apply_bluetooth,

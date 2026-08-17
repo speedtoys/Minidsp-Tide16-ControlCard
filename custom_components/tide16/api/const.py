@@ -35,6 +35,7 @@ GET_PRESET_INDEX: Final = "get_current_preset_index"
 GET_PRESETS: Final = "get_all_presets"
 GET_SPEAKER_CONFIG: Final = "get_speaker_config_number"
 GET_OUTPUT_SPEAKERS: Final = "get_output_speakers"
+GET_CUSTOM_PORT_NAMES: Final = "get_custom_out_port_names"
 GET_DIRAC_STATE: Final = "get_dirac_state"
 GET_DIRAC_MEASURING: Final = "get_dirac_measuring_mode"
 GET_BLUETOOTH: Final = "get_bluetooth_status"
@@ -57,6 +58,7 @@ REFRESH_ENDPOINTS: Final = (
     GET_PRESETS,
     GET_SPEAKER_CONFIG,
     GET_OUTPUT_SPEAKERS,
+    GET_CUSTOM_PORT_NAMES,
     GET_DIRAC_STATE,
     GET_DIRAC_MEASURING,
     GET_BLUETOOTH,

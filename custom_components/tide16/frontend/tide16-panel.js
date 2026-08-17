@@ -921,14 +921,30 @@ const SHORT = {
 
 // Fallback: "SomeNewSpeaker" -> "SNS". Digits stay attached to their word
 // so a hypothetical "Sub5" still reads as S5 rather than S.
+//
+// The first alternative is what handles a name the user typed themselves in
+// the unit's web UI rather than one the decoder assigned. A capital with no
+// lowercase after it is a word in its own right: without it "L-Mix" matched
+// only "Mix" and came out as "M", quietly dropping the half of the name that
+// said which side it was. An all-capitals run is kept whole, since a name
+// like "LM" is already an abbreviation and taking its initial would leave a
+// single letter.
 function abbreviate(name) {
   const key = String(name).replace(/[\s_-]/g, '');
   const hit = SHORT[key.toLowerCase()];
   if (hit) return hit;
-  const words = key.match(/[A-Z]?[a-z]+\d*|\d+/g);
-  if (!words) return key.slice(0, 4).toUpperCase();
+  // Split on the separators before splitting on case, so a name typed in
+  // lower case still reads as several words: "analyser left" is two words
+  // and abbreviates AL, where treating it as one gave a bare A.
+  const words = String(name)
+    .trim()
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .flatMap((part) => part.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+\d*|\d+/g) || [part]);
+  if (!words.length) return key.slice(0, 4).toUpperCase();
   return words
-    .map((w) => (w[0] + (w.match(/\d+$/) || [''])[0]).toUpperCase())
+    .map((w) =>
+      (/^[A-Z]{2,}$/.test(w) ? w : w[0] + (w.match(/\d+$/) || [''])[0]).toUpperCase())
     .join('')
     .slice(0, 4);
 }
@@ -936,6 +952,9 @@ function abbreviate(name) {
 const CH_DEFAULTS = {
   entity: 'sensor.tide16_channel_levels',
   attribute: 'channel_names',
+  // Outputs whose name was typed into the unit's own web UI. Those are
+  // printed as they were written; the decoder's own names are abbreviated.
+  custom_attribute: 'custom_channels',
   channels: 16,
   show_unassigned: false,
   label: 'Output Channels:',
@@ -949,6 +968,8 @@ const CH_DEFAULTS = {
   font_size: '1.2cqw',
   min_font_size: '11px',
   gap: '1.35cqw',
+  // Space between an output's number and its name.
+  idx_gap: '0.3em',
   // Card width under which the row folds into two columns. Chosen to sit
   // just under where the px floor takes over from cqw (1.2cqw = 11px at a
   // 917px card), i.e. exactly where the row stops shrinking with the card
@@ -962,6 +983,12 @@ const CH_DEFAULTS = {
 
 // Outputs per column once folded: 1-8 left, 9-16 right.
 const CH_PER_COLUMN = 8;
+
+// Tightest the legend's spacing may be squeezed to keep one line - see _fit.
+// Both spacings scale together, so the ratio between them - and with it the
+// grouping - holds all the way down; this is just the point where the row
+// starts to look cramped. It takes all sixteen outputs named to reach it.
+const CH_MIN_GAP_SCALE = 0.25;
 
 class Tide16Channels extends HTMLElement {
   constructor() {
@@ -1006,7 +1033,15 @@ class Tide16Channels extends HTMLElement {
           color: ${c.color};
         }
         .lead { color: ${c.label_color}; }
-        .idx { color: ${c.index_color}; margin-right: 0.3em; }
+        .idx {
+          color: ${c.index_color};
+          /* Scaled by _fit along with the gaps between entries, so the
+             space inside an entry stays visibly smaller than the space
+             between two of them however tight the row gets - that ratio
+             is what keeps "13 SW2 14 LM" reading as three pairs rather
+             than one run of characters. */
+          margin-right: calc(${c.idx_gap} * var(--t16-squeeze, 1));
+        }
         .off { color: ${c.index_color}; }
 
         /* Folded form. Below this width the type has hit its px floor and
@@ -1029,6 +1064,40 @@ class Tide16Channels extends HTMLElement {
       </style>
       <div class="row"></div>`;
     this._row = root.querySelector('.row');
+
+    // The first `hass` usually lands before picture-elements has sized this
+    // element, so the fit below has nothing to measure and the row is left
+    // wrapped - and nothing re-renders it, because the names have not
+    // changed. Re-fitting whenever the width actually changes covers both
+    // that first sizing and a later card resize. Keyed on the width so
+    // _fit's own effect on the row's height cannot feed back into it.
+    this._observe();
+  }
+
+  _observe() {
+    if (this._ro || !this._row || !window.ResizeObserver) return;
+    this._ro = new ResizeObserver((entries) => {
+      const w = entries[entries.length - 1].contentRect.width;
+      if (w === this._width) return;
+      this._width = w;
+      this._refit();
+    });
+    this._ro.observe(this);
+  }
+
+  connectedCallback() {
+    this._observe();
+  }
+
+  disconnectedCallback() {
+    if (this._raf) {
+      cancelAnimationFrame(this._raf);
+      this._raf = null;
+    }
+    if (!this._ro) return;
+    this._ro.disconnect();
+    this._ro = null;
+    this._width = null;
   }
 
   _names() {
@@ -1039,15 +1108,88 @@ class Tide16Channels extends HTMLElement {
     return Array.isArray(raw) ? raw : null;
   }
 
-  _render() {
-    const names = this._names();
-    const sig = JSON.stringify(names);
-    if (sig === this._sig) return;
-    this._sig = sig;
-    this._paint(names);
+  /** Output numbers, 1-based, whose name is the user's own words. */
+  _custom() {
+    if (!this._hass) return [];
+    const st = this._hass.states[this._cfg.entity];
+    const raw = st && st.attributes ? st.attributes[this._cfg.custom_attribute] : null;
+    return Array.isArray(raw) ? raw.map(Number).filter((n) => n > 0) : [];
   }
 
-  _paint(names) {
+  _render() {
+    const names = this._names();
+    const custom = this._custom();
+    const sig = JSON.stringify([names, custom]);
+    if (sig === this._sig) return;
+    this._sig = sig;
+    this._paint(names, custom);
+    this._refit();
+  }
+
+  /** Fit now, and again on the next frame.
+   *
+   * The first paint usually happens before the card has resolved its own
+   * width, and until it does, the container query that chooses between the
+   * one-line row and the folded two-column form reports the folded one - so
+   * _fit sees a deliberately multi-line layout and correctly leaves it alone.
+   * Nothing repaints afterwards, because the names have not changed, and the
+   * row stays wrapped off the bottom of the plate. A second pass one frame
+   * later runs against the real geometry.
+   */
+  _refit() {
+    this._fit();
+    if (!window.requestAnimationFrame) return;
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      this._fit();
+    });
+  }
+
+  /** Close the gaps up, and only the gaps, if the row would run onto a
+   * second line.
+   *
+   * The strip is one line of black screen with nothing under it, so a second
+   * line falls off the bottom of the plate.  It only comes up when the unit
+   * names more outputs than a 7.2.4 layout assigns - an output driven by hand
+   * through the routing matrix, named in the unit's own web UI - which is a
+   * couple of entries more than the strip was drawn for.
+   *
+   * The type is deliberately left alone: at 15 entries the words themselves
+   * take 544 of the 616 available px, so the row fits comfortably at full
+   * size once the 8px between entries comes down to about 5.  Shrinking the
+   * font instead would make the legend smaller than everything else printed
+   * on the plate to buy space that the spacing already has.
+   *
+   * All sixteen outputs named is the worst case there is, and it fits.
+   */
+  _fit() {
+    const row = this._row;
+    if (!row) return;
+    row.style.gap = '';
+    row.style.removeProperty('--t16-squeeze');
+    // The folded two-column form is many lines on purpose - leave it be.
+    if (getComputedStyle(row).display === 'grid') return;
+
+    const wraps = () => {
+      const line = parseFloat(getComputedStyle(row).lineHeight);
+      return line > 0 && row.getBoundingClientRect().height > line * 1.4;
+    };
+    if (!wraps()) return;
+
+    const c = this._cfg;
+    for (let f = 0.85; f >= CH_MIN_GAP_SCALE; f -= 0.05) {
+      row.style.gap = `calc(${c.gap} * 0.45 * ${f}) calc(${c.gap} * ${f})`;
+      row.style.setProperty('--t16-squeeze', String(f));
+      if (!wraps()) return;
+    }
+    // Nothing more to give. The tightest spacing stays rather than going
+    // back to normal: there is no second line to wrap onto here - it falls
+    // off the bottom of the plate - so the most that fits on one line is the
+    // most the reader gets to see.
+  }
+
+  _paint(names, custom) {
     if (!this._row) return;
     this._row.innerHTML = '';
 
@@ -1097,7 +1239,12 @@ class Tide16Channels extends HTMLElement {
 
       const label = document.createElement('span');
       if (!name) label.className = 'off';
-      label.textContent = name ? abbreviate(name) : '—';
+      // A name from the unit's web UI is printed as it was typed - it is
+      // already whatever length its author wanted. Only the decoder's own
+      // enum names get shortened, since those are things like
+      // "RightRearOverhead".
+      const own = (custom || []).indexOf(i + 1) !== -1;
+      label.textContent = name ? (own ? name : abbreviate(name)) : '—';
       chip.appendChild(label);
 
       this._row.appendChild(chip);
@@ -2422,11 +2569,11 @@ const PANEL_LAYOUT = {
         "gap": "0.88cqw",
         "color": "#FFFFFF",
         "index_color": "#B7B8B8",
-        "label_color": "#B7B8B8",
+        "label_color": "#FFFFFF",
         "style": {
           "left": "0.854%",
           "top": "86.375%",
-          "width": "66%",
+          "width": "63.3%",
           "transform": "translate(0, 0)"
         }
       },
@@ -3116,7 +3263,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.4",
+        "title": "v2.4.5",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3617,7 +3764,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.4';
+const TIDE16_VERSION = '2.4.5';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

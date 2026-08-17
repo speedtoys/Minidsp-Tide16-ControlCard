@@ -1,5 +1,45 @@
 # Changelog
 
+## v2.4.5 - 2026-08-17
+
+**Outputs the decoder does not assign are named at last.**  `get_output_speakers`
+only reports the channels the decoder lays out - 13 of them for 7.2.4 - so an
+output driven by hand through the routing matrix metered correctly and then sat
+in the legend with no name.  The unit does know: `get_custom_out_port_names`
+holds whatever was typed into its own web UI at :5050.  It answers `{}` until
+something is named, which is what made it look like a dead end.  It is now
+polled alongside the speaker list and merged into the legend, a custom name
+winning where there is one.  Nothing pushes it, so a rename takes up to the 60s
+sweep to appear.
+
+**Those names print as they were written.**  `RightRearOverhead` has to be
+abbreviated to fit; `L-Mix` does not, and shortening it again produced `LM`.
+The integration marks which outputs are the user's own words
+(`custom_channels`) and the legend abbreviates only the rest.
+
+**Fixed: a lone capital vanished from an abbreviated name.**  The word split
+only matched a capital followed by lower case, so `L-Mix` abbreviated to `M` -
+dropping the half of the name that said which side it was.  Separators are now
+split before case, so `analyser left` gives `AL` rather than `A`, and an
+all-capitals name like `LM` is kept whole instead of reduced to its initial.
+
+**The legend fits on one line whatever it holds.**  A second line falls off the
+bottom of the plate, and two more entries were enough to cause one on a narrow
+card, where the type sits on its 11px floor and stops scaling with the plate.
+The spacing between entries and the spacing between an output's number and its
+name are now scaled together when, and only when, the row would otherwise wrap
+- the ratio between them is what keeps it reading as a list of pairs.  The type
+is never touched.  All sixteen outputs named is the worst case, and it fits.
+Above roughly 1600px of plate nothing is squeezed at all.
+
+**The legend stops at the reboot button** rather than at the edge of the screen
+area, so its last entry cannot end up behind it.  `13 SW2` already touched the
+button on a 7.2.4 layout.
+
+**`Dolby Digital Plus without Dolby Atmos`** joins the shortened stream names,
+as `DD+ W/O Atmos`.  **The "Output Channels:" heading is white**, matching the
+rest of the legend rather than the dimmed index numbers.
+
 ## v2.4.4 - 2026-08-16
 
 **Peak-hold markers are off by default**, and the meter's ballistics are

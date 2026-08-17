@@ -61,6 +61,7 @@ def _rate_khz(data: dict[str, Any]) -> str | None:
 # is how a panel ends up asserting something the device never said.
 STREAM_SHORT_FORMS: Final = {
     "dolby digital plus with dolby atmos": "DD+ W/Atmos",
+    "dolby digital plus without dolby atmos": "DD+ W/O Atmos",
 }
 
 
@@ -203,7 +204,16 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
         # The state is the count; the names themselves are the attribute the
         # legend reads, held across a dropout so the meter stays labelled.
         value=lambda d: len(d.get("channel_names_held") or []),
-        attributes=lambda d: {"channel_names": d.get("channel_names_held") or []},
+        # `custom_channels` lists the outputs whose name was typed into the
+        # unit's own web UI rather than assigned by the decoder. The legend
+        # prints those verbatim: "RightRearOverhead" is an enum that has to be
+        # abbreviated to fit, but a name somebody chose themselves is already
+        # as short as they wanted it, and shortening it again turns "L-Mix"
+        # into "LM".
+        attributes=lambda d: {
+            "channel_names": d.get("channel_names_held") or [],
+            "custom_channels": d.get("custom_channels_held") or [],
+        },
         always_available=True,
     ),
     Tide16SensorDescription(
