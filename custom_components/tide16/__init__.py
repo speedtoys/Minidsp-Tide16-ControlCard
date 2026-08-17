@@ -32,6 +32,7 @@ from .const import (
     SERVICE_VOLUME_STEP,
     STATIC_URL,
 )
+from .autodim import Tide16AutoDim
 from .coordinator import Tide16Coordinator
 from .websocket import async_register_websocket_api
 
@@ -70,6 +71,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_start()
 
+    coordinator.autodim = Tide16AutoDim(hass, coordinator)
+    coordinator.autodim.async_start()
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -84,6 +88,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
         coordinator: Tide16Coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        if coordinator.autodim:
+            coordinator.autodim.async_stop()
         await coordinator.async_stop()
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_VOLUME_STEP)

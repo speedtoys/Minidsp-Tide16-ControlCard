@@ -62,6 +62,11 @@
               # empty, a habit inherited from a "badges cell" this design
               # invented and the device does not have.
               - type: custom:tide16-bars
+                # Compared against the unit's own bars: ours read about a
+                # tenth short of the hardware at the same moment, so the drawn
+                # height is trimmed up to match. The dB scale itself is
+                # untouched - see level_gain.
+                level_gain: 1.1
                 style:
                   left: 17.739%
                   top: 21.500%
@@ -99,6 +104,29 @@
                   # pixel it is given, so a legend long enough to reach the end
                   # otherwise runs its last entry under that button.
                   width: 63.3%
+                  transform: translate(0, 0)
+              # Auto dim, top-right of the Source cell - the corner of that
+              # box is empty on the plate, and this belongs beside the source
+              # rather than out among the audio controls, because it is about
+              # the panel itself.
+              #
+              # The label never changes, so the state is the colour: white
+              # while the ramp owns the display, grey while it does not. The
+              # ramp itself is in the integration (autodim.py), not here - a
+              # card runs once per browser, and this has to run once.
+              - type: custom:tide16-toggle
+                entity: switch.tide16_auto_dim
+                icon: /tide16_static/sun.svg
+                labels:
+                  'on': DIM
+                  'off': DIM
+                colors:
+                  'on': '#FFFFFF'
+                  'off': '#8A8B8B'
+                style:
+                  right: 83.1%
+                  left: unset
+                  top: 41.6%
                   transform: translate(0, 0)
               # Scene buttons, on the faceplate between the screen (ends
               # x=810) and the standby button (starts x=1102).
@@ -745,7 +773,7 @@
               # One of three stamps that must agree - the others are the
               # manifest version and TIDE16_VERSION in the module.
               - type: custom:tide16-readout
-                title: v2.5.0
+                title: v2.5.1
                 title_size: 0.980cqw
                 title_color: '#000'
                 title_gap: '0'

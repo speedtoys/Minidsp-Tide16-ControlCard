@@ -58,7 +58,14 @@ _LOGGER = logging.getLogger(__name__)
 
 FULL_REFRESH = 60.0
 IDLE_METERING = 5.0
-FAST_METERING = 0.25
+# Matched to the unit, measured rather than assumed: it answers
+# get_rms_block_db 89 times a second with a 5ms round trip, but the numbers it
+# returns only change about every 90ms - so that is how often it recomputes
+# the block, and anything faster than this just re-reads the same values.
+#
+# At the old 250ms this under-sampled the hardware by nearly three to one, and
+# every reading could be a quarter-second old before it was even asked for.
+FAST_METERING = 0.1
 
 # get_settings gets its own loop, because it is the only source for things the
 # user can change WITHOUT Home Assistant - the upmixer, the Dolby profile, the
@@ -93,7 +100,15 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._speaker_names: dict[int, str] = {}
         self._custom_port_names: dict[int, str] = {}
 
+        # Set by __init__ once the entry is up. Declared here so the type is
+        # visible; it is not built in the coordinator because it needs the
+        # coordinator, and the import would be a circle.
+        self.autodim: Any = None
+
         self._subscribers = 0
+        # Tripped when a subscriber arrives, so the metering loop can stop
+        # waiting out an idle sleep it no longer needs - see _metering_loop.
+        self._meter_wake = asyncio.Event()
         self._loops: list[asyncio.Task] = []
         self._client = Tide16Client(
             host,
@@ -135,6 +150,7 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     @callback
     def add_meter_subscriber(self) -> None:
         self._subscribers += 1
+        self._meter_wake.set()
 
     @callback
     def remove_meter_subscriber(self) -> None:
@@ -161,10 +177,26 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             await asyncio.sleep(SETTINGS_REFRESH)
 
     async def _metering_loop(self) -> None:
+        """Poll the levels, fast while something is watching.
+
+        The wait is interruptible on purpose. With nothing watching this sits
+        idle for five seconds at a time, and a plain sleep cannot be cut short
+        - so opening the view subscribed, and then waited out however much of
+        that five seconds was left before the first frame of data arrived. The
+        meter held its last values for up to five seconds and then sprang to
+        life, which reads as the card being broken rather than idle.
+        """
         while True:
             if self._client.connected:
                 await self._client.send(GET_RMS_DB)
-            await asyncio.sleep(FAST_METERING if self.metering_fast else IDLE_METERING)
+            delay = FAST_METERING if self.metering_fast else IDLE_METERING
+            try:
+                await asyncio.wait_for(self._meter_wake.wait(), delay)
+            except TimeoutError:
+                pass  # nothing arrived; this is the ordinary cadence
+            else:
+                # A subscriber turned up: go round now, at the fast cadence.
+                self._meter_wake.clear()
 
     async def _sweep(self) -> None:
         for endpoint in REFRESH_ENDPOINTS:

@@ -73,6 +73,11 @@ SET_SCENE: Final = "set_scene"
 SET_PRESET: Final = "set_preset"
 SET_DIRAC_STATE: Final = "set_dirac_state"
 SET_BT_PAIRING: Final = "set_bt_pairing_mode"
+# Not in the endpoint list the unit's own control page publishes - that page
+# has no brightness control at all - and found by probing. Takes {"value":
+# 0-100}; any other argument name is rejected with "Key value should be
+# present".
+SET_BRIGHTNESS: Final = "set_brightness"
 SET_DOLBY_PROFILE: Final = "set_dolby_profile"
 # Takes a `decoder` key, not a `value` - the unit says so when it is
 # missing. Values are the three the unit's own control page offers.

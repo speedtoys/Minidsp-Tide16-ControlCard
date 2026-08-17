@@ -26,9 +26,16 @@ from .const import DOMAIN
 
 CMD_SUBSCRIBE = f"{DOMAIN}/levels/subscribe"
 
-# 4 Hz to the browser is the point of the exercise; anything the coordinator
-# reads while nobody is watching is dropped rather than pushed.
-PUSH_INTERVAL = 0.25
+# Matched to the coordinator's fast cadence, which is itself matched to how
+# often the unit recomputes its RMS block (~90ms, measured). Left at 4 Hz this
+# was the real limit on the meter no matter how fast anything upstream ran:
+# frames went out on this timer, so two out of every three readings were
+# fetched and then dropped, and a bar could be a quarter-second behind the
+# hardware before it was drawn.
+#
+# Anything the coordinator reads while nobody is watching is still dropped
+# rather than pushed - the subscription is what turns this on at all.
+PUSH_INTERVAL = 0.1
 
 
 @callback

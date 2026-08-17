@@ -1,5 +1,86 @@
 # Changelog
 
+## v2.5.1 - 2026-08-17
+
+### Auto dim: the display follows the sun
+
+A **DIM** button, top-right of the Source cell, walks the front panel's
+brightness between a day and a night level across a window either side of
+sunrise and sunset, using the sun at the Home Assistant location's own
+coordinates - so it tracks the season without anybody editing a schedule twice
+a year. White while it owns the display, grey while it does not.
+
+`set_brightness` is not in the endpoint list the unit's control page publishes
+- that page has no brightness control at all - and was found by probing:
+`{"endpoint": "set_brightness", "value": 0-100}`, which answers `OK` and
+rejects any other argument name with "Key value should be present". A firmware
+without it simply never dims.
+
+Five entities, because these are Home Assistant's settings rather than the
+unit's - the Tide16 has nowhere to keep a schedule - so they restore across a
+restart instead of being read back from the device:
+
+| | default | |
+|---|---|---|
+| `switch.tide16_auto_dim` | off | what the button toggles |
+| `number.tide16_auto_dim_day_brightness` | 80% | |
+| `number.tide16_auto_dim_night_brightness` | 20% | |
+| `number.tide16_auto_dim_lead` | 30 min | before the sun event |
+| `number.tide16_auto_dim_trail` | 15 min | after it |
+| `sensor.tide16_auto_dim_target` | | diagnostic: what it is aiming at |
+
+The rate is not a setting - it falls out of the range and the window. 80% to
+20% across 45 minutes is 1% every 45 seconds; widen the window to slow it.
+Switching auto dim off hands the display back at the day level rather than
+leaving it wherever the ramp had got to. Nothing else about the display is
+touched, and in particular its sleep timeout is left alone.
+
+The ramp runs in the integration, not the card: a card runs once per browser,
+so the same ramp would run several times over, and would not run at all with
+no dashboard open.
+
+### The meter was three times slower than the hardware
+
+Two throttles, neither of them the device. Measured: the unit answers
+`get_rms_block_db` **89 times a second** with a 5ms round trip, but the numbers
+only change about every 90ms - so ~11 Hz is its real update rate.
+
+- The coordinator polled at 250ms, under-sampling the hardware nearly 3:1.
+- The websocket pushed to the browser on its own 250ms timer, which was the
+  actual ceiling - raising the poll rate alone changed nothing.
+
+Both now 100ms: **10 frames a second, 77 of every 80 carrying new values.**
+
+**Opening the view no longer waits.** The idle meter sleeps five seconds
+between reads and a subscriber could not interrupt it, so switching to the
+Tide16 view held the last frame for up to five seconds before the bars moved.
+The wait is now an event a subscriber trips: first frame arrives in **1ms**.
+
+### The meter window
+
+- **A vertical dB axis**, off by default (`axis`). Marks are the multiples of
+  `axis_step` inside the scale; the labels ride inside the plot rather than in
+  a gutter, because the window is not wide enough to spend a tenth of it on
+  four numbers. The rules are the blue-green of an old fluorescent display's
+  graticule, barely lit, with a faint bloom rather than a hard hairline.
+- **`marker: dot`** draws a level as a column of dots - a period-sized trail
+  under a larger head - which is what lets 30-odd bands fit where 16 bars go.
+  The lowest rows fade toward the baseline so a floor full of quiet bands does
+  not read as a solid line of light.
+- **`level_gain`**, a trim on the drawn height applied after the dB scale.
+  The channel meter uses 1.1: compared against the unit's own bars, ours read
+  about a tenth short. The scale says what the numbers mean and the trim says
+  how they are drawn - folding the difference into `ceiling_db` would have
+  made the meter lie about its own units.
+
+### Also
+
+- `tide16-toggle` takes an `icon` (drawn as a mask filled with the button's own
+  colour, so it dims with the label) and per-state `colors`, for a button whose
+  label does not change with its state.
+- The frequency/number row under the meter follows the axis inset, so a label
+  cannot end up under the gutter belonging to no column at all.
+
 ## v2.5.0 - 2026-08-17
 
 ### Every setting the unit has, as entities

@@ -49,7 +49,7 @@ const BAR_GRADIENT =
   '#ACADAD 0%, #ABACAC 5%, #949494 20%, #838383 30%,' +
   '#5F6060 50%, #3E3E3D 70%, #252524 85%, #0E0E0E 100%)';
 
-// Packed string table for the idle panel. Repack with tools/pack_strings.py.
+// Standby display data.
 const IDLE_KEY = [0x5b, 0x2e, 0x77, 0x13, 0xa9, 0x64, 0x3d, 0xc1, 0x8e, 0x42, 0x1f, 0xb6];
 const IDLE_TABLE =
   'CUsadsQGWLOuNnCWLl0SM8oLTbHrMDLQKUsSM8YcRKbrLD/QNFxXZ8EBHaPrMWuWKEcQfcgIHbD7I3PfL1dZGeAQ30EXMT/R' +
@@ -269,6 +269,16 @@ const DEFAULTS = {
   ceiling_db: 0,
   floor_db: -90,
 
+  // A trim on the drawn height, after the dB scale has been applied. The
+  // scale above is the honest one - it was derived by matching the unit's own
+  // display against a logged pink-noise sweep - but the bars still sat a
+  // little under the hardware's, and this is the difference. 1 is no trim.
+  //
+  // Deliberately not folded into ceiling_db: the scale says what the numbers
+  // mean, this says how they are drawn, and confusing the two is how a meter
+  // ends up lying about its own units.
+  level_gain: 1,
+
   // Ballistics, the way a real meter does it.
   //
   // Fall is a RATE, in dB per second - not a time constant. That is the
@@ -324,7 +334,10 @@ const DEFAULTS = {
   // space 16 bars occupy: a dot column can be far narrower than a bar and
   // still be read at a glance.
   marker: 'bar',
-  dot_rows: 12,
+  // 20 rows over a 70 dB scale is 3.5 dB a row. At 12 it was 5.8, and a band
+  // that moved by less than that did not move at all - which reads as lag
+  // however current the data behind it is.
+  dot_rows: 20,
   // The trail is deliberately tiny - periods, not beads. It is there to say
   // how far the band has been, and anything bigger competes with the head
   // for the eye at 31 columns across.
@@ -336,6 +349,39 @@ const DEFAULTS = {
   // trail, so it is drawn several times their size and the eye lands on it.
   dot_head_scale: 1.8,
   dot_radius: '50%',
+  // The floor of the column is where every band sits when there is nothing
+  // playing, and 31 columns of bottom dots at full strength reads as a solid
+  // line of light across the meter. The lowest few fade out towards the
+  // baseline - dimmest at the bottom, and never all the way to invisible, so
+  // a band that is genuinely at the floor still shows where it is.
+  dot_fade_rows: 6,
+  dot_fade_min: 0.22,
+
+  // A dB scale up the left-hand side, with a faint rule across the window at
+  // each mark. Off by default: the channel meter has been read without one
+  // since the plate was drawn, and the window is only so wide.
+  //
+  // The marks are the multiples of `axis_step` that fall inside the scale,
+  // and the columns are inset to make room for the labels - so turning this
+  // on costs a little of the plot's width, which is why it is a choice
+  // rather than a default.
+  axis: false,
+  axis_step: 20,
+  // Percent of the window given over to a label gutter. Zero by default: the
+  // window is not wide enough to spend a tenth of it on four numbers, so the
+  // labels ride inside the plot instead, sitting on top of their own rule at
+  // the left edge. They land where the bottom bands are quiet and the top of
+  // the scale is empty, so in practice they cover nothing.
+  axis_inset: 0,
+  axis_size: '0.62cqw',
+  axis_color: '#9FA0A0',
+  // The rules are meant to read like the graticule on an old fluorescent
+  // display: the blue-green of the phosphor, barely lit, with the faintest
+  // bloom around it rather than a hard hairline. Present when you look for
+  // it, gone when you are watching the music.
+  axis_grid: 'rgba(126, 232, 226, 0.055)',
+  axis_grid_glow: '0 0 2px rgba(126, 232, 226, 0.035)',
+  axis_suffix: '',
 
   // What goes in the row under the meter. By default the output numbers
   // 1..N. `labels` is an explicit list; `label_attribute` reads one off the
@@ -559,13 +605,13 @@ class Tide16Bars extends HTMLElement {
         position: 'absolute',
         top: '0',
         bottom: '0',
-        left: `${i * geom.pitch + (geom.pitch - geom.width) / 2}%`,
+        left: `${geom.inset + i * geom.pitch + (geom.pitch - geom.width) / 2}%`,
         width: `${geom.width}%`,
       } : {
         position: 'absolute',
         top: '0',
         bottom: '0',
-        left: `${i * geom.pitch}%`,
+        left: `${geom.inset + i * geom.pitch}%`,
         width: `${geom.width}%`,
         background: BAR_GRADIENT,
         // Fully clipped = silent. inset() clips from the top, so the
@@ -597,6 +643,7 @@ class Tide16Bars extends HTMLElement {
             background: this._cfg.dot_color,
             bottom: `${(r + 0.5) * pitch}%`,
             transform: 'translateY(50%)',
+            opacity: String(this._dotFade(r)),
             display: 'none',
           });
           bar.appendChild(d);
@@ -615,7 +662,7 @@ class Tide16Bars extends HTMLElement {
         const mark = document.createElement('div');
         Object.assign(mark.style, {
           position: 'absolute',
-          left: `${i * geom.pitch}%`,
+          left: `${geom.inset + i * geom.pitch}%`,
           width: `${geom.width}%`,
           height: `${this._cfg.peak_height_px}px`,
           background: this._cfg.peak_color,
@@ -626,6 +673,8 @@ class Tide16Bars extends HTMLElement {
         this._peaks_el.push(mark);
       }
     }
+
+    if (this._cfg.axis) this._buildAxis(geom);
 
     if (this._cfg.idle) this._buildIdle();
 
@@ -638,8 +687,11 @@ class Tide16Bars extends HTMLElement {
     Object.assign(row.style, {
       position: 'absolute',
       top: '100%',
-      left: '0',
-      width: '100%',
+      // Starts where the columns start. With an axis in the way that is not
+      // the window's left edge any more, and a label sitting under the axis
+      // gutter belongs to no column at all.
+      left: `${geom.inset}%`,
+      width: `${100 - geom.inset}%`,
       paddingTop: this._cfg.numbers_gap,
       display: 'flex',
       lineHeight: '1',
@@ -888,15 +940,16 @@ class Tide16Bars extends HTMLElement {
    */
   _geom() {
     const n = Math.max(1, Number(this._cfg.bands) || GEOMETRY.channels);
-    if (n === GEOMETRY.channels) {
-      return { n, pitch: GEOMETRY.pitchPct, width: GEOMETRY.barWidthPct };
+    const inset = this._cfg.axis ? Math.max(0, Number(this._cfg.axis_inset) || 0) : 0;
+    if (n === GEOMETRY.channels && !inset) {
+      return { n, pitch: GEOMETRY.pitchPct, width: GEOMETRY.barWidthPct, inset: 0 };
     }
-    const pitch = 100 / n;
+    const pitch = (100 - inset) / n;
     const dot = this._cfg.marker === 'dot';
     const frac = dot
       ? Math.max(0.05, Math.min(1, Number(this._cfg.dot_width_frac) || 0.55))
       : GEOMETRY.barWidthPct / GEOMETRY.pitchPct;
-    return { n, pitch, width: pitch * frac };
+    return { n, pitch, width: pitch * frac, inset };
   }
 
   /** Where one column's marker goes, given its level as a percentage.
@@ -904,6 +957,72 @@ class Tide16Bars extends HTMLElement {
    * A bar is clipped from the top so it grows out of the baseline; a dot is
    * placed at the level and nothing is drawn below it.
    */
+  /** The dB scale up the left, and a rule across the window at each mark.
+   *
+   * Marks are the multiples of `axis_step` that fall strictly inside the
+   * scale: the floor and the ceiling are the window's own edges and labelling
+   * them says nothing the shape of the plot does not already say.
+   */
+  _buildAxis(geom) {
+    const c = this._cfg;
+    const floor = Number(c.floor_db);
+    const ceiling = Number(c.ceiling_db);
+    const span = ceiling - floor;
+    const step = Math.abs(Number(c.axis_step) || 0);
+    if (!(span > 0) || !step) return;
+
+    const lo = Math.min(floor, ceiling);
+    const hi = Math.max(floor, ceiling);
+    for (let v = Math.ceil(lo / step) * step; v < hi; v += step) {
+      if (v <= lo) continue;
+      const pct = ((v - floor) / span) * 100;
+      if (pct <= 0 || pct >= 100) continue;
+
+      const rule = document.createElement('div');
+      Object.assign(rule.style, {
+        position: 'absolute',
+        left: `${geom.inset}%`,
+        right: '0',
+        bottom: `${pct}%`,
+        height: '1px',
+        background: c.axis_grid,
+        boxShadow: c.axis_grid_glow,
+        pointerEvents: 'none',
+      });
+      this.appendChild(rule);
+
+      const inGutter = geom.inset > 0;
+      const label = document.createElement('div');
+      Object.assign(label.style, {
+        position: 'absolute',
+        left: '0',
+        // In a gutter the number is centred on its rule and right-aligned
+        // against the plot. With no gutter it perches on top of the rule at
+        // the far left, out of the way of the line itself.
+        width: inGutter ? `${Math.max(0, geom.inset - 1)}%` : 'auto',
+        bottom: `${pct}%`,
+        transform: inGutter ? 'translateY(50%)' : 'translateY(-0.1em)',
+        textAlign: inGutter ? 'right' : 'left',
+        fontSize: c.axis_size,
+        lineHeight: '1',
+        color: c.axis_color,
+        pointerEvents: 'none',
+        userSelect: 'none',
+      });
+      label.textContent = `${Math.round(v)}${c.axis_suffix}`;
+      this.appendChild(label);
+    }
+  }
+
+  /** How bright the dot on row `r` is. Full strength above the fade, and
+   * evenly graded below it down to `dot_fade_min` on the bottom row. */
+  _dotFade(r) {
+    const rows = Math.max(0, Number(this._cfg.dot_fade_rows) || 0);
+    if (r >= rows) return 1;
+    const min = Math.max(0, Math.min(1, Number(this._cfg.dot_fade_min)));
+    return +(min + (1 - min) * (r / rows)).toFixed(3);
+  }
+
   _place(i, pct) {
     if (this._cfg.marker !== 'dot') {
       this._bars[i].style.clipPath = `inset(${100 - pct}% 0 0 0)`;
@@ -1035,7 +1154,7 @@ class Tide16Bars extends HTMLElement {
       const db = levels && typeof levels[i] === 'number' ? levels[i] : null;
       let pct = 0;
       if (db !== null) {
-        pct = ((db - floor) / span) * 100;
+        pct = ((db - floor) / span) * 100 * (Number(this._cfg.level_gain) || 1);
         pct = Math.max(0, Math.min(100, pct));
       }
       if (this._ballistic()) {
@@ -1498,6 +1617,15 @@ const TOGGLE_DEFAULTS = {
   entity: null,
   // state -> what to print. A state with no entry prints itself.
   labels: {},
+  // state -> what colour to print it in, for a button whose label does not
+  // change with its state. A state with no entry uses `color`.
+  colors: {},
+  // Optional mark before the label. Drawn as a mask filled with the button's
+  // own colour rather than as an image, so it dims and brightens with the
+  // text instead of sitting there at full strength while the label greys out.
+  icon: null,
+  icon_size: '0.95em',
+  icon_gap: '0.34em',
   size: '0.844cqw',
   weight: '500',
   color: '#E7E8E8',
@@ -1556,9 +1684,25 @@ class Tide16Toggle extends HTMLElement {
           color: ${c.active_color};
           filter: brightness(1.5);
         }
+        .ico {
+          display: inline-block;
+          width: ${c.icon_size};
+          height: ${c.icon_size};
+          margin-right: ${c.icon_gap};
+          /* the glyph is the mask, the colour is the button's own */
+          background: currentColor;
+          -webkit-mask: var(--t16-icon) center / contain no-repeat;
+          mask: var(--t16-icon) center / contain no-repeat;
+          /* sits on the text's optical centre, not its baseline */
+          vertical-align: -0.12em;
+        }
       </style>
-      <span class="btn"></span>`;
+      <span class="btn">${c.icon ? '<i class="ico"></i>' : ''}<span class="txt"></span></span>`;
     this._btn = root.querySelector('.btn');
+    this._txt = root.querySelector('.txt');
+    if (c.icon) {
+      this._btn.style.setProperty('--t16-icon', `url("${c.icon}")`);
+    }
     this._btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       this._step();
@@ -1579,7 +1723,11 @@ class Tide16Toggle extends HTMLElement {
     const label = state === null
       ? this._cfg.placeholder
       : (this._cfg.labels[state] != null ? this._cfg.labels[state] : state);
-    this._btn.textContent = String(label);
+    this._txt.textContent = String(label);
+    // A button that always says the same thing has to show its state some
+    // other way, so the colour is it.
+    const colour = state !== null ? this._cfg.colors[state] : null;
+    this._btn.style.color = colour || '';
   }
 
   /** Step to the next state. The button shows what IS displayed, so tapping
@@ -2901,6 +3049,7 @@ const PANEL_LAYOUT = {
     "elements": [
       {
         "type": "custom:tide16-bars",
+        "level_gain": 1.1,
         "style": {
           "left": "17.739%",
           "top": "21.500%",
@@ -2923,6 +3072,25 @@ const PANEL_LAYOUT = {
           "left": "0.854%",
           "top": "86.375%",
           "width": "63.3%",
+          "transform": "translate(0, 0)"
+        }
+      },
+      {
+        "type": "custom:tide16-toggle",
+        "entity": "switch.tide16_auto_dim",
+        "icon": "/tide16_static/sun.svg",
+        "labels": {
+          "on": "DIM",
+          "off": "DIM"
+        },
+        "colors": {
+          "on": "#FFFFFF",
+          "off": "#8A8B8B"
+        },
+        "style": {
+          "right": "83.1%",
+          "left": "unset",
+          "top": "41.6%",
           "transform": "translate(0, 0)"
         }
       },
@@ -3612,7 +3780,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.0",
+        "title": "v2.5.1",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -4165,7 +4333,7 @@ function withSpectrum(layout, spec) {
     // rather than hiding it. At 22 dB/s a band that stops falls for nearly
     // two seconds after the sound has gone, which reads as the display
     // lagging the room - because it is. Overridable, like everything here.
-    attack_ms: 70,
+    attack_ms: 45,
     decay_db_s: 55,
     // A spectrum has no channels to name and no silence to fill: the idle
     // scroller belongs to the unit being off, which is not what an empty
@@ -4206,7 +4374,7 @@ function withSpectrum(layout, spec) {
   return layout;
 }
 
-const TIDE16_VERSION = '2.5.0';
+const TIDE16_VERSION = '2.5.1';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

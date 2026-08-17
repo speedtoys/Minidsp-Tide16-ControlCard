@@ -249,6 +249,7 @@ async def async_setup_entry(
     async_add_entities(
         [Tide16Sensor(coordinator, d) for d in SENSORS]
         + [Tide16SettingSensor(coordinator, s) for s in of_kind(SENSOR)]
+        + [Tide16AutoDimTarget(coordinator)]
     )
 
 
@@ -313,3 +314,33 @@ class Tide16SettingSensor(Tide16Entity, SensorEntity):
         if self._setting.attributes is None:
             return None
         return self._setting.attributes(self._settings)
+
+
+class Tide16AutoDimTarget(Tide16Entity, SensorEntity):
+    """What the auto-dim ramp is aiming the display at right now.
+
+    Unknown while auto dim is off, because then nothing is aiming at anything,
+    and unknown on a day with no sunrise or sunset at all - which is the
+    honest answer inside the polar circles rather than an invented one.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "%"
+    _attr_icon = "mdi:brightness-percent"
+
+    def __init__(self, coordinator: Tide16Coordinator) -> None:
+        super().__init__(coordinator, "auto_dim_target", "Auto Dim Target")
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.autodim.add_listener(self.async_write_ha_state)
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        return self.coordinator.autodim.target
