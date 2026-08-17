@@ -238,47 +238,36 @@ const DEFAULTS = {
   // and closing the tab IS the unsubscribe.
   subscribe: 'tide16/levels/subscribe',
 
-  // Output level tracks the master volume: with real content at -42 dB the
-  // loudest channel peaked at -42.9, i.e. full scale IS the volume setting.
-  // So the mapping is anchored to the volume entity and slides with it -
-  // a fixed dB window would read totally differently at every volume, which
-  // is exactly the trap that makes home-made meters look broken.
-  //   ceiling = <ceiling_entity>   (falls back to ceiling_db)
-  //   floor   = ceiling - range_db
+  // The meter is ABSOLUTE. It shows what is going out to each channel against
+  // a fixed reference, exactly as the hardware's own meter does - which is why
+  // the unit draws small bars at -70 and pegs near -5.
   //
-  // Tried the other way (fixed 0..-60 dBFS, the raw device numbers with no
-  // volume anchoring) and it read as dead bars at normal listening levels.
-  // Set ceiling_entity: null in YAML to get that back.
-  ceiling_entity: 'number.tide16_volume',
-
-  // Full scale is the volume setting PLUS headroom, not the volume setting.
+  // Everything before this anchored the ceiling to the volume entity and slid
+  // the window with it, so the bars drew the same heights at every listening
+  // level. That is the one thing this meter must not do.
   //
-  // Measured across three master settings on real content:
+  // Measured off a pink-noise sweep from -122 to 0 dB, video of the unit's own
+  // display matched frame-by-frame against the logged per-channel dB:
   //
-  //   master   peak out   above master
-  //   -70      -60.3       9.7 dB
-  //   -50      -38.1      11.9 dB
-  //   -48      -41.1       6.9 dB
+  //   peak dB    what the hardware shows
+  //   -93.3      nothing
+  //   -92.2      nothing
+  //   -86.2      one tiny nub
+  //   -84.7      a few nubs
+  //   -77.2      small but clear bars
+  //    -0.3      pegged
   //
-  // The window slides 1:1 with the master - dropping it 22 dB pulled the
-  // peaks down with it - so anchoring to volume is right. It was simply
-  // sitting ~10 dB too low, which pinned four to six bars at 100% on every
-  // frame and made the meter useless. The spread in that column is content,
-  // not error: three different passages.
+  // Bars appear between -93 and -86 and peg at about 0, so the window is
+  // 0 .. -90. It checks out across the range: -77 -> 14%, -86 -> 4%, and on
+  // separate movie content at -26.5 master the channels spanned -38 to -83,
+  // which is 58% down to 8% - all visible, the quiet ones low, which is what
+  // the unit showed.
   //
-  // The unit does not report its own meter reference over the API - checked:
-  // get_rms_block is the same measurement in linear amplitude, and the
-  // display settings carry only brightness, sleep and colour - so this
-  // constant is the closest thing to that reference there is.
-  headroom_db: 10,
-
-  // 45 rather than 40: the headroom pushes the whole window up, and at -70
-  // master the active channels spanned -60 to -92, which is 32 dB of real
-  // content that would otherwise crowd the floor.
-  range_db: 45,
-
-  floor_db: -60, // used only when ceiling_entity is unset/unavailable
+  // Note the unit's dB is NOT dBFS: get_rms_block (linear) and
+  // get_rms_block_db sit a constant 4.5 dB apart, so linear 1.0 reads +4.5.
+  // The peak hit +4.78 at master 0. The display still clamps at 0.
   ceiling_db: 0,
+  floor_db: -90,
 
   // Ballistics, the way a real meter does it.
   //
@@ -731,16 +720,7 @@ class Tide16Bars extends HTMLElement {
   }
 
   _scale() {
-    // Volume-anchored plus headroom when possible, fixed dB otherwise.
-    const id = this._cfg.ceiling_entity;
-    if (id && this._hass) {
-      const st = this._hass.states[id];
-      const v = parseFloat(st ? st.state : NaN);
-      if (Number.isFinite(v)) {
-        const ceiling = v + Number(this._cfg.headroom_db || 0);
-        return { ceiling, floor: ceiling - this._cfg.range_db };
-      }
-    }
+    // Fixed, absolute, and deliberately not derived from the volume.
     return { ceiling: this._cfg.ceiling_db, floor: this._cfg.floor_db };
   }
 
@@ -3136,7 +3116,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.2",
+        "title": "v2.4.3",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3637,7 +3617,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.2';
+const TIDE16_VERSION = '2.4.3';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.4.3 - 2026-08-16
+
+**The meter is absolute now, like the hardware's own.**
+
+It shows what is going out to each channel against a fixed reference, which is
+why the unit draws small bars at -70 and pegs near -5.  Every version before
+this anchored the ceiling to the volume entity and slid the window with it, so
+the bars drew the same heights at every listening level - the one thing this
+meter must not do.  No constant could fix that, which is why `headroom_db`
+kept being wrong at some other volume.
+
+Measured, not guessed: a pink-noise sweep from -122 to 0 dB, with video of the
+unit's own display matched frame by frame against the logged per-channel dB.
+
+| peak dB | what the hardware shows |
+|---|---|
+| -93.3 | nothing |
+| -92.2 | nothing |
+| -86.2 | one tiny nub |
+| -84.7 | a few nubs |
+| -77.2 | small but clear bars |
+| -0.3 | pegged |
+
+Bars appear between -93 and -86 and peg at about 0, so the window is
+**0 .. -90 dB**.  It checks out across the range: -77 lands at 14%, -86 at 4%,
+and on separate movie content at -26.5 master the channels spanned -38 to -83,
+which is 58% down to 8% - all visible, the quiet ones low, exactly as the unit
+showed them.
+
+`ceiling_entity`, `headroom_db` and `range_db` are gone.  There is nothing to
+tune: `ceiling_db` and `floor_db` are the scale.
+
+The sweep also turned up what the unit's dB actually is, which is what made
+this so hard to pin down: it is NOT dBFS.  `get_rms_block` (linear) and
+`get_rms_block_db` sit a constant 4.5 dB apart, so linear 1.0 - real full
+scale - reads +4.5 in the unit's numbers, and the peak did hit +4.78 at master
+0.  The display still clamps at 0.
+
 ## v2.4.2 - 2026-08-16
 
 **The meter stopped pinning every loud channel at 100%.**
