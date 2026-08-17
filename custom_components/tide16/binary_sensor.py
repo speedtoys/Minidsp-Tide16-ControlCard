@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .coordinator import Tide16Coordinator
 from .entity import Tide16Entity
+from .settings import BINARY, Tide16Setting, of_kind, value_at
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -87,7 +88,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: Tide16Coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(Tide16BinarySensor(coordinator, d) for d in BINARY_SENSORS)
+    async_add_entities(
+        [Tide16BinarySensor(coordinator, d) for d in BINARY_SENSORS]
+        + [Tide16SettingBinary(coordinator, s) for s in of_kind(BINARY)]
+    )
 
 
 class Tide16BinarySensor(Tide16Entity, BinarySensorEntity):
@@ -102,3 +106,18 @@ class Tide16BinarySensor(Tide16Entity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         return self.entity_description.value(self.coordinator.data)
+
+
+class Tide16SettingBinary(Tide16Entity, BinarySensorEntity):
+    """A read-only flag out of `get_settings` - see settings.py."""
+
+    def __init__(self, coordinator: Tide16Coordinator, setting: Tide16Setting) -> None:
+        super().__init__(coordinator, setting.key, setting.name)
+        self._setting = setting
+        self._attr_entity_category = setting.category
+        self._attr_icon = setting.icon
+
+    @property
+    def is_on(self) -> bool | None:
+        value = value_at(self.coordinator.data.get("settings") or {}, self._setting.path)
+        return None if value is None else bool(value)

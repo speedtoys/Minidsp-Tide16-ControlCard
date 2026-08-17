@@ -22,6 +22,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .coordinator import Tide16Coordinator
 from .entity import Tide16Entity
+from .settings import SENSOR, TABLE_STATES, Tide16Setting, of_kind, value_at
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -245,7 +246,10 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: Tide16Coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(Tide16Sensor(coordinator, d) for d in SENSORS)
+    async_add_entities(
+        [Tide16Sensor(coordinator, d) for d in SENSORS]
+        + [Tide16SettingSensor(coordinator, s) for s in of_kind(SENSOR)]
+    )
 
 
 class Tide16Sensor(Tide16Entity, SensorEntity):
@@ -272,3 +276,40 @@ class Tide16Sensor(Tide16Entity, SensorEntity):
         if self.entity_description.attributes is None:
             return None
         return self.entity_description.attributes(self.coordinator.data)
+
+
+class Tide16SettingSensor(Tide16Entity, SensorEntity):
+    """A read-only field of `get_settings` - see settings.py.
+
+    Everything the unit reports and nothing writes: the sample rate it is
+    running at, the sub and dialog gains (which have no setter on this
+    firmware), and the 16-wide tables, whose values are attributes rather than
+    sixteen entities apiece.
+    """
+
+    def __init__(self, coordinator: Tide16Coordinator, setting: Tide16Setting) -> None:
+        super().__init__(coordinator, setting.key, setting.name)
+        self._setting = setting
+        self._attr_entity_category = setting.category
+        self._attr_native_unit_of_measurement = setting.unit
+        self._attr_icon = setting.icon
+
+    @property
+    def _settings(self) -> dict[str, Any]:
+        return self.coordinator.data.get("settings") or {}
+
+    @property
+    def native_value(self) -> Any:
+        state = TABLE_STATES.get(self._setting.key)
+        if state is not None:
+            return state(self._settings)
+        value = value_at(self._settings, self._setting.path)
+        # A dict or a list is not a state; those rows carry their content in
+        # the attributes and get their state from TABLE_STATES.
+        return None if isinstance(value, (dict, list)) else value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self._setting.attributes is None:
+            return None
+        return self._setting.attributes(self._settings)

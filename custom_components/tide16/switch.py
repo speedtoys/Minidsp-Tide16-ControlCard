@@ -1,4 +1,4 @@
-"""Mute and Dirac Live."""
+"""Mute, Dirac Live, and every on/off setting the unit reports."""
 
 from __future__ import annotations
 
@@ -12,14 +12,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api.const import SET_DIRAC_STATE, SET_MUTE
 from .const import DOMAIN
 from .coordinator import Tide16Coordinator
-from .entity import Tide16Entity
+from .entity import Tide16Entity, Tide16SettingEntity
+from .settings import SWITCH, of_kind
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: Tide16Coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([Tide16Mute(coordinator), Tide16Dirac(coordinator)])
+    async_add_entities(
+        [Tide16Mute(coordinator), Tide16Dirac(coordinator)]
+        + [Tide16SettingSwitch(coordinator, s) for s in of_kind(SWITCH)]
+    )
 
 
 class Tide16Mute(Tide16Entity, SwitchEntity):
@@ -70,3 +74,18 @@ class Tide16Dirac(Tide16Entity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.async_send(SET_DIRAC_STATE, enabled=False)
+
+
+class Tide16SettingSwitch(Tide16SettingEntity, SwitchEntity):
+    """One of the unit's on/off settings - see settings.py."""
+
+    @property
+    def is_on(self) -> bool | None:
+        value = self._value
+        return None if value is None else bool(value)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._write(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._write(False)

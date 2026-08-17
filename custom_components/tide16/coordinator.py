@@ -71,7 +71,6 @@ FAST_METERING = 0.25
 SETTINGS_REFRESH = 5.0
 
 DISCONNECTED_STATUS = "not connected"
-DISCONNECTED_STATUS = "not connected"
 
 
 class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -364,9 +363,18 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.data["bluetooth"] = data
 
     def _apply_settings(self, data: Any) -> None:
-        """get_settings is the only source for three things the panel needs."""
+        """get_settings is the only source for most of what the unit knows.
+
+        The whole payload is kept, not just the fields the panel prints. It is
+        one reply on a poll that already happens, so every setting in it is
+        free to keep - the Dolby and DTS blocks, bass management, the
+        crossovers, the matrix, the PEQ - and entities for the rest of it can
+        read straight out of here without asking the unit for anything more.
+        """
         if not isinstance(data, dict):
             return
+
+        self.data["settings"] = data
 
         sources = data.get("sources")
         if isinstance(sources, dict):
@@ -440,6 +448,7 @@ def _blank() -> dict[str, Any]:
         # _apply_output_speakers
         "channel_names_held": [],
         "custom_channels_held": [],
+        "settings": {},
         "dirac": {},
         "dirac_measuring": None,
         "bluetooth": {},

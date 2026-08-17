@@ -298,6 +298,58 @@ const DEFAULTS = {
 
   transition_ms: 260, // only used when decay_ms is 0 - the old CSS glide
 
+  // --- what is being metered, and how it is drawn ------------------------
+  //
+  // 'meter' takes the 16 DSP channel levels off the integration's own push
+  // subscription. 'entity' reads an array of dB values straight out of a
+  // state attribute, which is how anything else gets drawn in this window
+  // with the same scale and the same ballistics - a spectrum analyser, say.
+  // The window knows nothing about where that came from: a microphone, a
+  // line input, another integration entirely. It is an array of numbers.
+  source: 'meter',
+  entity: null,
+  attribute: null,
+
+  // How many columns. Null means the plate's 16, whose pitch was measured
+  // off the artwork and must not be recomputed. Any other count divides the
+  // window evenly.
+  bands: null,
+
+  // 'bar' fills up from the baseline, which is what a level meter does.
+  // 'dot' marks the level with a single dot and nothing under it - what
+  // makes 31 bands fit in the space 16 bars occupy, since a dot can be much
+  // narrower than the column it sits in.
+  // 'bar' fills from the baseline as a level meter does. 'dots' draws the
+  // same level as a stack of dots, which is what lets 31 bands live in the
+  // space 16 bars occupy: a dot column can be far narrower than a bar and
+  // still be read at a glance.
+  marker: 'bar',
+  dot_rows: 12,
+  // The trail is deliberately tiny - periods, not beads. It is there to say
+  // how far the band has been, and anything bigger competes with the head
+  // for the eye at 31 columns across.
+  dot_width_frac: 0.3, // of one pitch
+  // The purple of the power glyph (#B300FF), so the window reads as part of
+  // the same instrument rather than a chart dropped onto it.
+  dot_color: '#B300FF',
+  // The topmost lit dot is the level itself; the ones under it are just the
+  // trail, so it is drawn several times their size and the eye lands on it.
+  dot_head_scale: 1.8,
+  dot_radius: '50%',
+
+  // What goes in the row under the meter. By default the output numbers
+  // 1..N. `labels` is an explicit list; `label_attribute` reads one off the
+  // same entity as the values (frequency centres, for a spectrum) and
+  // formats it. `label_every` thins them out when they will not all fit.
+  labels: null,
+  label_attribute: null,
+  label_every: 1,
+
+  // Show this instance only while an entity reads a given state, so two of
+  // them can share the window and swap without the card being rebuilt -
+  // rebuilding is what makes the whole panel flash.
+  show_when: null,
+
   // The 1-16 channel numbers. base-T16.pxd does NOT bake these in the way
   // the old photo plate did, so the meter draws its own - which is
   // strictly better, because they come off the same pitch as the bars and
@@ -345,6 +397,7 @@ class Tide16Bars extends HTMLElement {
 
   setConfig(config) {
     this._cfg = { ...DEFAULTS, ...(config || {}) };
+    this._labelled = false;
     if (this._cfg.ceiling_db <= this._cfg.floor_db) {
       throw new Error('tide16-bars: ceiling_db must be greater than floor_db');
     }
@@ -357,6 +410,16 @@ class Tide16Bars extends HTMLElement {
     // the connection only exists once hass does, so the first assignment is
     // the earliest moment a subscription can be opened
     if (first) this._syncSubscription();
+    this._syncVisible();
+    // Labels can come off the same entity as the values, and that entity is
+    // not there yet on the first pass, so the row is filled in once it is.
+    if (this._cfg.label_attribute && !this._labelled) {
+      const st = hass && this._cfg.entity ? hass.states[this._cfg.entity] : null;
+      if (st && st.attributes && Array.isArray(st.attributes[this._cfg.label_attribute])) {
+        this._labelled = true;
+        this._build();
+      }
+    }
     this._render();
   }
 
@@ -395,7 +458,10 @@ class Tide16Bars extends HTMLElement {
 
   _syncSubscription() {
     const wanted = this._onScreen && document.visibilityState === 'visible';
-    if (wanted) this._subscribe();
+    // Nothing to subscribe to when the values come from a state attribute -
+    // hass delivers those on its own.
+    if (this._cfg.source === 'entity') this._unsubscribe();
+    else if (wanted) this._subscribe();
     else this._unsubscribe();
     // The ballistics loop rides the same gate. Off screen it is stopped, and
     // the bars are left wherever they were - the next frame of data snaps
@@ -468,11 +534,15 @@ class Tide16Bars extends HTMLElement {
   _build() {
     this.innerHTML = '';
     this._bars = [];
-    this._target = new Array(GEOMETRY.channels).fill(0);
-    this._shown = new Array(GEOMETRY.channels).fill(0);
-    this._peaks = new Array(GEOMETRY.channels).fill(0);
-    this._peakShown = new Array(GEOMETRY.channels).fill(-1);
-    this._peakUntil = new Array(GEOMETRY.channels).fill(0);
+    const geom = this._geom();
+    const dot = this._cfg.marker === 'dot';
+    this._target = new Array(geom.n).fill(0);
+    this._shown = new Array(geom.n).fill(0);
+    this._peaks = new Array(geom.n).fill(0);
+    this._peakShown = new Array(geom.n).fill(-1);
+    this._peakUntil = new Array(geom.n).fill(0);
+    this._dots = [];
+    this._lit = [];
     this._peaks_el = [];
     Object.assign(this.style, {
       display: 'block',
@@ -480,14 +550,23 @@ class Tide16Bars extends HTMLElement {
       pointerEvents: 'none',
     });
 
-    for (let i = 0; i < GEOMETRY.channels; i++) {
+    for (let i = 0; i < geom.n; i++) {
       const bar = document.createElement('div');
-      Object.assign(bar.style, {
+      // A dot is a square marker riding at the level with nothing under it,
+      // so it is sized by its width and positioned from the baseline; a bar
+      // spans the whole window and is clipped down to the level.
+      Object.assign(bar.style, dot ? {
         position: 'absolute',
         top: '0',
         bottom: '0',
-        left: `${i * GEOMETRY.pitchPct}%`,
-        width: `${GEOMETRY.barWidthPct}%`,
+        left: `${i * geom.pitch + (geom.pitch - geom.width) / 2}%`,
+        width: `${geom.width}%`,
+      } : {
+        position: 'absolute',
+        top: '0',
+        bottom: '0',
+        left: `${i * geom.pitch}%`,
+        width: `${geom.width}%`,
         background: BAR_GRADIENT,
         // Fully clipped = silent. inset() clips from the top, so the
         // revealed slice always grows up from the baseline.
@@ -500,6 +579,32 @@ class Tide16Bars extends HTMLElement {
           : `clip-path ${this._cfg.transition_ms}ms linear`,
         willChange: 'clip-path',
       });
+      if (dot) {
+        // One dot per row, placed on its own row line and hidden until the
+        // level reaches it. Sized by the column's width with a square
+        // aspect, so they stay round at any card size.
+        const rows = Math.max(2, Number(this._cfg.dot_rows) || 12);
+        const pitch = 100 / rows;
+        const dots = [];
+        for (let r = 0; r < rows; r++) {
+          const d = document.createElement('div');
+          Object.assign(d.style, {
+            position: 'absolute',
+            left: '0',
+            width: '100%',
+            aspectRatio: '1',
+            borderRadius: this._cfg.dot_radius,
+            background: this._cfg.dot_color,
+            bottom: `${(r + 0.5) * pitch}%`,
+            transform: 'translateY(50%)',
+            display: 'none',
+          });
+          bar.appendChild(d);
+          dots.push(d);
+        }
+        this._dots.push(dots);
+        this._lit.push(-1);
+      }
       this.appendChild(bar);
       this._bars.push(bar);
 
@@ -510,8 +615,8 @@ class Tide16Bars extends HTMLElement {
         const mark = document.createElement('div');
         Object.assign(mark.style, {
           position: 'absolute',
-          left: `${i * GEOMETRY.pitchPct}%`,
-          width: `${GEOMETRY.barWidthPct}%`,
+          left: `${i * geom.pitch}%`,
+          width: `${geom.width}%`,
           height: `${this._cfg.peak_height_px}px`,
           background: this._cfg.peak_color,
           display: 'none',
@@ -544,14 +649,18 @@ class Tide16Bars extends HTMLElement {
       pointerEvents: 'none',
       userSelect: 'none',
     });
-    for (let i = 0; i < GEOMETRY.channels; i++) {
+    const labels = this._labels(geom.n);
+    const every = Math.max(1, Number(this._cfg.label_every) || 1);
+    for (let i = 0; i < geom.n; i++) {
       const cell = document.createElement('div');
       Object.assign(cell.style, {
-        width: `${GEOMETRY.pitchPct}%`,
+        width: `${geom.pitch}%`,
         flex: 'none',
         textAlign: 'center',
       });
-      cell.textContent = String(i + 1);
+      // Thinned rather than dropped: every cell still holds its pitch, so
+      // the ones that do print stay centred under their own column.
+      cell.textContent = i % every === 0 ? labels[i] : '';
       row.appendChild(cell);
     }
     this.appendChild(row);
@@ -716,12 +825,112 @@ class Tide16Bars extends HTMLElement {
   }
 
   _levels() {
+    if (this._cfg.source === 'entity') {
+      const st = this._hass && this._cfg.entity
+        ? this._hass.states[this._cfg.entity] : null;
+      const raw = st && st.attributes ? st.attributes[this._cfg.attribute] : null;
+      return Array.isArray(raw) ? raw : null;
+    }
     return Array.isArray(this._live) ? this._live : null;
+  }
+
+  /** The row of labels under the meter.
+   *
+   * Numbers by default, because that is what the outputs are called. A list
+   * can be given outright, or read off the same entity as the values -
+   * `frequencies` alongside `bands`, for a spectrum - in which case they are
+   * formatted as frequencies: 20, 500, 1k, 16k.
+   */
+  _labels(n) {
+    const c = this._cfg;
+    let raw = Array.isArray(c.labels) ? c.labels : null;
+    if (!raw && c.label_attribute && this._hass && c.entity) {
+      const st = this._hass.states[c.entity];
+      const list = st && st.attributes ? st.attributes[c.label_attribute] : null;
+      if (Array.isArray(list)) raw = list.map(formatHz);
+    }
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push(raw && raw[i] != null ? String(raw[i]) : String(i + 1));
+    }
+    return out;
+  }
+
+  /** Whether this instance is the one on show. Two of them can share the
+   * meter window - the channels and something else - and swap on an entity
+   * without the card being rebuilt around them. */
+  _syncVisible() {
+    const when = this._cfg.show_when;
+    if (!when || !when.entity) return;
+    const st = this._hass ? this._hass.states[when.entity] : null;
+    const want = st ? String(st.state) === String(when.state) : false;
+    const now = this.style.display !== 'none';
+    if (want === now) return;
+    this.style.display = want ? 'block' : 'none';
+    // Its subscription and its animation ride the on-screen gate, so the
+    // hidden one costs nothing while it waits.
+    this._onScreen = want && this._onScreen;
+    this._syncSubscription();
   }
 
   _scale() {
     // Fixed, absolute, and deliberately not derived from the volume.
     return { ceiling: this._cfg.ceiling_db, floor: this._cfg.floor_db };
+  }
+
+  /** Columns, and their pitch and width in percent of this element's box.
+   *
+   * The 16-channel case returns the measured plate geometry untouched - its
+   * pitch is not 100/16, it is what the artwork does, and the numbers under
+   * the meter have to land on it. Any other count divides the window evenly
+   * and keeps the plate's bar-to-pitch ratio, so a 31-band row looks like it
+   * belongs to the same instrument.
+   */
+  _geom() {
+    const n = Math.max(1, Number(this._cfg.bands) || GEOMETRY.channels);
+    if (n === GEOMETRY.channels) {
+      return { n, pitch: GEOMETRY.pitchPct, width: GEOMETRY.barWidthPct };
+    }
+    const pitch = 100 / n;
+    const dot = this._cfg.marker === 'dot';
+    const frac = dot
+      ? Math.max(0.05, Math.min(1, Number(this._cfg.dot_width_frac) || 0.55))
+      : GEOMETRY.barWidthPct / GEOMETRY.pitchPct;
+    return { n, pitch, width: pitch * frac };
+  }
+
+  /** Where one column's marker goes, given its level as a percentage.
+   *
+   * A bar is clipped from the top so it grows out of the baseline; a dot is
+   * placed at the level and nothing is drawn below it.
+   */
+  _place(i, pct) {
+    if (this._cfg.marker !== 'dot') {
+      this._bars[i].style.clipPath = `inset(${100 - pct}% 0 0 0)`;
+      return;
+    }
+    const dots = this._dots[i];
+    if (!dots) return;
+    // Round rather than floor, so a level sitting between two rows lands on
+    // the nearer one instead of always reading low. Anything above silence
+    // lights at least one dot: a band that is quiet but present should not
+    // look the same as a band that is not there.
+    let lit = Math.round((pct / 100) * dots.length);
+    if (pct > 0 && lit === 0) lit = 1;
+    if (lit === this._lit[i]) return;
+    const head = this._cfg.dot_head_scale;
+    for (let r = 0; r < dots.length; r++) {
+      const on = r < lit;
+      const st = dots[r].style;
+      const want = on ? 'block' : 'none';
+      if (st.display !== want) st.display = want;
+      // Only the top lit dot is scaled up, so the head moves with the level
+      // instead of leaving a bigger dot behind at the old one.
+      const scale = on && r === lit - 1 ? ` scale(${head})` : '';
+      const tf = `translateY(50%)${scale}`;
+      if (st.transform !== tf) st.transform = tf;
+    }
+    this._lit[i] = lit;
   }
 
   _ballistic() {
@@ -775,7 +984,7 @@ class Tide16Bars extends HTMLElement {
       }
       if (cur !== this._shown[i]) {
         this._shown[i] = cur;
-        this._bars[i].style.clipPath = `inset(${100 - cur}% 0 0 0)`;
+        this._place(i, cur);
       }
       if (Math.abs(target - cur) > 0.01) pending = true;
 
@@ -832,7 +1041,7 @@ class Tide16Bars extends HTMLElement {
       if (this._ballistic()) {
         this._target[i] = pct;
       } else {
-        this._bars[i].style.clipPath = `inset(${100 - pct}% 0 0 0)`;
+        this._place(i, pct);
       }
     }
     this._kick();
@@ -918,6 +1127,17 @@ const SHORT = {
   leftfrontwide: 'FWL',
   rightfrontwide: 'FWR',
 };
+
+// 20 -> "20", 1000 -> "1k", 12500 -> "12.5k". Third-octave centres are the
+// case in hand and they are the awkward ones: 31.5 and 12.5k have to keep
+// their half, while 1000 must not print as 1.0k.
+function formatHz(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return String(v);
+  if (n < 1000) return String(Math.round(n * 10) / 10);
+  const k = Math.round((n / 1000) * 10) / 10;
+  return `${k}k`;
+}
 
 // Fallback: "SomeNewSpeaker" -> "SNS". Digits stay attached to their word
 // so a hypothetical "Sub5" still reads as S5 rather than S.
@@ -1258,6 +1478,135 @@ class Tide16Channels extends HTMLElement {
 
 if (!customElements.get('tide16-channels')) {
   customElements.define('tide16-channels', Tide16Channels);
+}
+
+/* =====================================================================
+ * tide16-toggle - a small two-state button printed on the faceplate.
+ *
+ * Made for choosing what the meter window is showing - the unit's own DSP
+ * channels, or something else measured about the same system - but it is
+ * just a button over an entity with a short label per state. Tapping it
+ * steps to the next state.
+ *
+ * It drives an entity rather than holding the choice itself, so the setting
+ * survives a reload, reads the same on every screen looking at the
+ * dashboard, and can be moved by a script or a scene like anything else.
+ * input_select and input_boolean are both handled.
+ * ===================================================================== */
+
+const TOGGLE_DEFAULTS = {
+  entity: null,
+  // state -> what to print. A state with no entry prints itself.
+  labels: {},
+  size: '0.844cqw',
+  weight: '500',
+  color: '#E7E8E8',
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.28)',
+  radius: '0.18cqw',
+  padding: '0.12cqw 0.36cqw',
+  active_color: '#FFFFFF',
+  placeholder: '--',
+};
+
+class Tide16Toggle extends HTMLElement {
+  constructor() {
+    super();
+    this._cfg = { ...TOGGLE_DEFAULTS };
+    this._hass = null;
+    this._shown = null;
+  }
+
+  setConfig(config) {
+    this._cfg = { ...TOGGLE_DEFAULTS, ...(config || {}) };
+    this._shown = null;
+    this._build();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _build() {
+    const c = this._cfg;
+    const root = this.shadowRoot || this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        /* flex, not block: an inline-block button in a block host sits on a
+           text baseline, and the leading under it pushed the button below
+           the cell it was positioned into. */
+        :host { display: flex; position: absolute; align-items: flex-start; }
+        .btn {
+          display: inline-block;
+          font-size: ${c.size};
+          font-weight: ${c.weight};
+          line-height: 1;
+          letter-spacing: 0.05em;
+          color: ${c.color};
+          background: ${c.background};
+          border: ${c.border};
+          border-radius: ${c.radius};
+          padding: ${c.padding};
+          white-space: nowrap;
+          user-select: none;
+          cursor: pointer;
+        }
+        .btn:active {
+          color: ${c.active_color};
+          filter: brightness(1.5);
+        }
+      </style>
+      <span class="btn"></span>`;
+    this._btn = root.querySelector('.btn');
+    this._btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      this._step();
+    });
+  }
+
+  _state() {
+    const st = this._hass && this._cfg.entity
+      ? this._hass.states[this._cfg.entity] : null;
+    return st ? String(st.state) : null;
+  }
+
+  _render() {
+    if (!this._btn) return;
+    const state = this._state();
+    if (state === this._shown) return;
+    this._shown = state;
+    const label = state === null
+      ? this._cfg.placeholder
+      : (this._cfg.labels[state] != null ? this._cfg.labels[state] : state);
+    this._btn.textContent = String(label);
+  }
+
+  /** Step to the next state. The button shows what IS displayed, so tapping
+   * it moves on rather than toggling something named on the button - which
+   * is the same way the unit's own front panel behaves. */
+  _step() {
+    const c = this._cfg;
+    if (!this._hass || !c.entity) return;
+    const st = this._hass.states[c.entity];
+    if (!st) return;
+    const [domain] = c.entity.split('.');
+    if (domain === 'input_boolean' || domain === 'switch') {
+      this._hass.callService(domain, 'toggle', { entity_id: c.entity });
+      return;
+    }
+    const options = (st.attributes && st.attributes.options) || [];
+    if (!options.length) return;
+    const next = options[(options.indexOf(st.state) + 1) % options.length];
+    this._hass.callService('input_select', 'select_option', {
+      entity_id: c.entity,
+      option: next,
+    });
+  }
+
+  getCardSize() {
+    return 1;
+  }
 }
 
 /* =====================================================================
@@ -3263,7 +3612,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.5",
+        "title": "v2.5.0",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3655,7 +4004,8 @@ class Tide16Panel extends HTMLElement {
       // Deep clone. A Lovelace card deep-freezes the config it is handed,
       // and PANEL_LAYOUT is module state - freezing it would break every
       // later instance of this card on the page.
-      card = helpers.createCardElement(JSON.parse(JSON.stringify(PANEL_LAYOUT)));
+      card = helpers.createCardElement(withSpectrum(
+        JSON.parse(JSON.stringify(PANEL_LAYOUT)), this._config.spectrum));
     } catch (err) {
       if (token !== this._token) return;
       wrap.textContent = `Tide16 panel failed to build: ${err}`;
@@ -3726,6 +4076,7 @@ const TIDE16_ELEMENTS = [
   ['tide16-knob-labels', Tide16KnobLabels],
   ['tide16-readout', Tide16Readout],
   ['tide16-inputs', Tide16Inputs],
+  ['tide16-toggle', Tide16Toggle],
   ['tide16-panel', Tide16Panel],
 ];
 
@@ -3764,7 +4115,98 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.5';
+/** Add a second meter to the layout, drawn in the same window as the
+ * channel bars and fed from a state attribute.
+ *
+ * The panel meters the unit's 16 DSP channels. This lets the same window
+ * show something else measured about the same system - a spectrum, from a
+ * microphone or a line input - as dots rather than bars, because 31 bands
+ * will not fit as 31 bars.
+ *
+ * Nothing about the measurement is in here or anywhere else in this repo:
+ * the card is handed an entity whose attribute is an array of dB values and
+ * draws it. Where that array came from is somebody's own business, and an
+ * install without one is untouched - the option defaults to absent.
+ *
+ * With `mode_entity` both meters are built and each shows itself when that
+ * entity reads its own state, so switching between them costs a display
+ * property rather than a rebuild of the card. Without it the spectrum simply
+ * replaces the channels.
+ */
+function withSpectrum(layout, spec) {
+  if (!spec || !spec.entity) return layout;
+  const els = layout.elements || [];
+  const i = els.findIndex((e) => e.type === 'custom:tide16-bars');
+  if (i === -1) return layout;
+
+  const channels = els[i];
+  const {
+    mode_entity: modeEntity,
+    channels_state: channelsState = 'Channels',
+    spectrum_state: spectrumState = 'Spectrum',
+    toggle,
+    ...rest
+  } = spec;
+
+  const meter = {
+    type: 'custom:tide16-bars',
+    // Same box on the plate, to the pixel.
+    style: JSON.parse(JSON.stringify(channels.style || {})),
+    source: 'entity',
+    attribute: 'bands',
+    marker: 'dot',
+    // Gentler than the channel meter's, but only just. That one is a peak
+    // meter and has to catch a transient; a spectrum is already an average
+    // over its own window, so the only thing left to smooth is the step from
+    // one dot row to the next.
+    //
+    // Not gentler than that, though: the analysis window is already ~0.5s of
+    // delay before a reading is published, and a slow fall here adds to it
+    // rather than hiding it. At 22 dB/s a band that stops falls for nearly
+    // two seconds after the sound has gone, which reads as the display
+    // lagging the room - because it is. Overridable, like everything here.
+    attack_ms: 70,
+    decay_db_s: 55,
+    // A spectrum has no channels to name and no silence to fill: the idle
+    // scroller belongs to the unit being off, which is not what an empty
+    // spectrum means.
+    idle: false,
+    ...rest,
+  };
+
+  if (!modeEntity) {
+    els[i] = meter;
+    return layout;
+  }
+  channels.show_when = { entity: modeEntity, state: channelsState };
+  meter.show_when = { entity: modeEntity, state: spectrumState };
+  els.splice(i + 1, 0, meter);
+
+  // The switch itself, in the empty right half of the Source cell - the one
+  // box on the plate with room for a control that is about what the screen
+  // is showing rather than about the audio. Position and labels are both
+  // overridable; these are just what fits the stock plate.
+  els.push({
+    type: 'custom:tide16-toggle',
+    entity: modeEntity,
+    labels: { [channelsState]: 'DSP', [spectrumState]: 'Freq' },
+    ...(toggle || {}),
+    style: {
+      // Bottom row of the Source cell, against its right border. Held by the
+      // right edge rather than the left so the source name, which shares the
+      // row and grows from the left, can never run into it - "ARC / eARC" is
+      // the longest the unit offers.
+      right: '83.1%',
+      left: 'unset',
+      top: '49.6%',
+      transform: 'translate(0, 0)',
+      ...((toggle && toggle.style) || {}),
+    },
+  });
+  return layout;
+}
+
+const TIDE16_VERSION = '2.5.0';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

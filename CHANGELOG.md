@@ -1,5 +1,116 @@
 # Changelog
 
+## v2.5.0 - 2026-08-17
+
+### Every setting the unit has, as entities
+
+`get_settings` returns the whole configuration of the processor and the
+integration already asked for it every five seconds - and then used four
+fields of it.  The rest is now exposed, whether or not the panel card has any
+use for it:
+
+- **Dolby**: loudness management, centre spread, upmixing, direct decoding,
+  volume leveler, DRC mode/cut/boost, speaker virtualizing mode and its four
+  angles, height speakers.
+- **DTS**: direct mode, upmix, analog compensation, type-1 relabel, dialog
+  control, DRC percentage, mask.
+- **Bass management**: enable, crossover, the five routing flags, the LFE
+  gains, the manager in use.
+- **Dirac**: gain, delay, filter index, slot, whether a filter is loaded.
+- **The unit itself**: bypass, flip centre/sub, display sleep and brightness,
+  web-UI dark mode, automatic updates, sample rate, bit depth, channel count,
+  the USB interface's rate/depth/channels, sub and dialog gain, lipsync delay,
+  max volume, lock state, settings file, Concord version, sample-rate
+  conversion.
+- **The 16-wide tables** - channel gains, mutes, phase, delays, crossovers,
+  PEQ, the routing matrix, the speaker table and the source table - as one
+  entity each with the values in the attributes.  Sixteen outputs times five
+  properties would be eighty entities for something almost nothing adjusts
+  from Home Assistant, and the attribute form is what a template or a script
+  wants anyway.
+
+Writable wherever the unit has a setter, read-only where it does not (`sub_gain`
+and `dialog_gain` have none on this firmware; only `set_channel_gain` writes a
+gain, per output).  The argument names were read out of the unit's own control
+page rather than guessed at.  Costs no extra traffic: it is the same reply the
+coordinator was already reading.
+
+### The meter window can show a spectrum instead of the channels
+
+The 16 DSP channel bars are what the unit itself meters.  This adds a second
+thing the same window can draw: **a 31-band third-octave spectrum of what the
+room is actually hearing**, as dot columns - a period-sized trail with a
+larger head dot - in the power button's purple.  Dots rather than bars because
+31 bars do not fit where 16 go.
+
+**The integration does not measure anything.**  It is handed an entity whose
+attribute is an array of dB values and draws it.  Where that array came from -
+a microphone, a line input, another integration entirely - it neither knows
+nor cares.  Nothing here depends on any particular hardware, and with the
+option absent, which is the default, nothing about an existing install
+changes.
+
+Configured on the card:
+
+```yaml
+type: custom:tide16-panel
+spectrum:
+  entity: sensor.your_spl_sensor   # attribute holding an array of dB values
+  attribute: bands
+  label_attribute: frequencies     # optional: band centres, printed as 20 .. 20k
+  bands: 31
+  floor_db: 20                     # the scale, in whatever units your sensor reports
+  ceiling_db: 90
+  label_every: 3                   # print every third label - one per octave
+  mode_entity: input_select.tide16_meter   # optional; adds a DSP/Freq button
+```
+
+With `mode_entity` set, both meters are built and each shows itself when that
+entity reads its own state, so switching costs a display property rather than
+a rebuild of the card - and a small **DSP / Freq** button appears in the Source
+cell, showing which of the two is on screen.  The entity is an `input_select`
+with two options (`Channels` and `Spectrum` by default, overridable with
+`channels_state` / `spectrum_state`).  Without it, the spectrum simply replaces
+the channel meter.
+
+### What it takes to have one of your own
+
+This is what the author's setup is, and it is all outside this repository:
+
+1. **A measurement microphone.**  A **miniDSP UMIK-1**, plugged into the USB
+   port of the machine Home Assistant runs on, with the calibration file that
+   came with it (the 90-degree one, if the mic points at the ceiling).
+2. **Capture has to run on the host, not in the container.**  Home Assistant
+   in Docker sees the `/dev/snd` it was started with, so a microphone plugged
+   in afterwards is invisible to it.  A small daemon on the host does the
+   capture instead.
+3. **A daemon that turns audio into bands.**  It reads the mic continuously,
+   takes a window of it (0.5s is a good compromise - the 20 Hz third-octave is
+   4.6 Hz wide and needs at least ~0.22s to resolve at all), computes a PSD,
+   integrates it into the 31 ANSI S1.11 third-octave bands, applies the mic's
+   calibration, and publishes the result.
+4. **A way into Home Assistant.**  MQTT discovery is the least work: one
+   sensor whose state is the wideband level and whose attributes carry
+   `bands` and `frequencies`.
+5. **A recorder exclusion.**  It publishes several times a second with 31
+   values attached, and Home Assistant writes a row every time state or
+   attributes change.
+6. **Something to keep it running.**  A systemd unit, with
+   `SupplementaryGroups=audio` - `/dev/snd` is `root:audio`, and the ACL that
+   lets a desktop login read it belongs to the login session, which a service
+   does not have.
+
+Any other source works just as well.  The card asks only for an array of
+numbers in an attribute.
+
+### Also
+
+- The channel meter grew a `marker: dot` form, a band count, an entity source
+  and configurable labels - the spectrum is the same element pointed somewhere
+  else, not a second meter implementation.
+- `tide16-toggle`: a small two-state button for the faceplate, over any
+  `input_select` or `input_boolean`, with a short label per state.
+
 ## v2.4.5 - 2026-08-17
 
 **Outputs the decoder does not assign are named at last.**  `get_output_speakers`

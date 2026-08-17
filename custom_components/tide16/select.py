@@ -22,14 +22,18 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .api.const import SET_DOLBY_PROFILE, SET_FORCED_UPMIXER
 from .const import DOLBY_PROFILES, DOMAIN, UPMIXERS
 from .coordinator import Tide16Coordinator
-from .entity import Tide16Entity
+from .entity import Tide16Entity, Tide16SettingEntity
+from .settings import SELECT, Tide16Setting, of_kind
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     coordinator: Tide16Coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([Tide16DolbyProfile(coordinator), Tide16Upmixer(coordinator)])
+    async_add_entities(
+        [Tide16DolbyProfile(coordinator), Tide16Upmixer(coordinator)]
+        + [Tide16SettingSelect(coordinator, s) for s in of_kind(SELECT)]
+    )
 
 
 # Measured on the unit: it accepts the frame in about 3ms and the profile
@@ -130,3 +134,26 @@ class Tide16Upmixer(Tide16Entity, SelectEntity):
         finally:
             self._pending = None
             self.async_write_ha_state()
+
+
+class Tide16SettingSelect(Tide16SettingEntity, SelectEntity):
+    """One of the unit's multiple-choice settings - see settings.py.
+
+    The options are the ones its own control page offers, read out of that
+    page's <select> markup rather than guessed.
+    """
+
+    def __init__(self, coordinator: Tide16Coordinator, setting: Tide16Setting) -> None:
+        super().__init__(coordinator, setting)
+        self._attr_options = list(setting.options or ())
+
+    @property
+    def current_option(self) -> str | None:
+        value = self._value
+        if value is None:
+            return None
+        value = str(value)
+        return value if value in self._attr_options else None
+
+    async def async_select_option(self, option: str) -> None:
+        await self._write(option)
