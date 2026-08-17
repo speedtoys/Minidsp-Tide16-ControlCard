@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.4.2 - 2026-08-16
+
+**The meter stopped pinning every loud channel at 100%.**
+
+Full scale was the volume setting.  It is the volume setting PLUS about 10 dB.
+Measured across three master settings on real content:
+
+| master | peak out | above master |
+|---|---|---|
+| -70 | -60.3 | 9.7 dB |
+| -50 | -38.1 | 11.9 dB |
+| -48 | -41.1 | 6.9 dB |
+
+Dropping the master 22 dB pulled the peaks down with it, so anchoring the
+window to the volume was right all along - it just sat ~10 dB too low, which
+put four to six bars flat against the top on every frame and left the meter
+saying nothing.  `headroom_db` (default 10) is that offset, and `range_db`
+goes 40 to 45 because the headroom lifts the whole window and the quiet
+channels would otherwise crowd the floor.  Measured after: peaks at 79-96%,
+nothing pinned, 25-46% for the quiet channels.
+
+The spread in that table is content, not error - three different passages.
+And the unit does not publish its own meter reference: `get_rms_block` is the
+same measurement in linear amplitude, and the display settings carry only
+brightness, sleep time and colour, so this constant is the closest thing to
+that reference there is.
+
+**A 20px buffer above the plate.**  Padding on the card's host rather than a
+margin on its wrapper - a margin collapses out of the shadow root and lands on
+whatever the card sits under, which is how the panel ended up flush against
+the top of the view.
+
+**`binary_sensor.tide16_bitstream`**, carrying the device's own `is_bitstream`.
+
 ## v2.4.1 - 2026-08-16
 
 **Settings now follow the device, not just Home Assistant.**  `get_settings`

@@ -250,7 +250,32 @@ const DEFAULTS = {
   // volume anchoring) and it read as dead bars at normal listening levels.
   // Set ceiling_entity: null in YAML to get that back.
   ceiling_entity: 'number.tide16_volume',
-  range_db: 40, // measured p05..max spanned ~38 dB below the volume setting
+
+  // Full scale is the volume setting PLUS headroom, not the volume setting.
+  //
+  // Measured across three master settings on real content:
+  //
+  //   master   peak out   above master
+  //   -70      -60.3       9.7 dB
+  //   -50      -38.1      11.9 dB
+  //   -48      -41.1       6.9 dB
+  //
+  // The window slides 1:1 with the master - dropping it 22 dB pulled the
+  // peaks down with it - so anchoring to volume is right. It was simply
+  // sitting ~10 dB too low, which pinned four to six bars at 100% on every
+  // frame and made the meter useless. The spread in that column is content,
+  // not error: three different passages.
+  //
+  // The unit does not report its own meter reference over the API - checked:
+  // get_rms_block is the same measurement in linear amplitude, and the
+  // display settings carry only brightness, sleep and colour - so this
+  // constant is the closest thing to that reference there is.
+  headroom_db: 10,
+
+  // 45 rather than 40: the headroom pushes the whole window up, and at -70
+  // master the active channels spanned -60 to -92, which is 32 dB of real
+  // content that would otherwise crowd the floor.
+  range_db: 45,
 
   floor_db: -60, // used only when ceiling_entity is unset/unavailable
   ceiling_db: 0,
@@ -706,13 +731,14 @@ class Tide16Bars extends HTMLElement {
   }
 
   _scale() {
-    // Volume-anchored when possible, fixed dB otherwise.
+    // Volume-anchored plus headroom when possible, fixed dB otherwise.
     const id = this._cfg.ceiling_entity;
     if (id && this._hass) {
       const st = this._hass.states[id];
-      const v = st ? parseFloat(st.state) : NaN;
+      const v = parseFloat(st ? st.state : NaN);
       if (Number.isFinite(v)) {
-        return { ceiling: v, floor: v - this._cfg.range_db };
+        const ceiling = v + Number(this._cfg.headroom_db || 0);
+        return { ceiling, floor: ceiling - this._cfg.range_db };
       }
     }
     return { ceiling: this._cfg.ceiling_db, floor: this._cfg.floor_db };
@@ -3110,7 +3136,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.1",
+        "title": "v2.4.2",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3458,6 +3484,11 @@ class Tide16Panel extends HTMLElement {
     style.textContent = `
       :host {
         display: block;
+        /* Air above the plate. Padding on the host rather than a margin on
+           the wrapper: a margin would collapse out of the shadow root and
+           land on whatever the card sits under, which is how the panel ended
+           up flush against the top of the view. */
+        padding-top: 20px;
       }
       .wrap {
         /* The whole reason this element exists rather than a bare
@@ -3606,7 +3637,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.1';
+const TIDE16_VERSION = '2.4.2';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

@@ -741,7 +741,7 @@
               # One of three stamps that must agree - the others are the
               # manifest version and TIDE16_VERSION in the module.
               - type: custom:tide16-readout
-                title: v2.4.1
+                title: v2.4.2
                 title_size: 0.980cqw
                 title_color: '#000'
                 title_gap: '0'

@@ -62,6 +62,13 @@ BINARY_SENSORS: tuple[Tide16BinaryDescription, ...] = (
     Tide16BinaryDescription(key="atmos", name="Atmos", value=_atmos),
     Tide16BinaryDescription(key="upmixed", name="Upmixed", value=_upmixed),
     Tide16BinaryDescription(
+        key="bitstream",
+        name="Bitstream",
+        # Two different signal paths with two different gain stagings, and the
+        # meter has to scale for whichever one is running - see tide16-bars.
+        value=lambda d: bool((d.get("stream") or {}).get("is_bitstream")),
+    ),
+    Tide16BinaryDescription(
         key="audio_signal",
         name="Audio Signal",
         # The only entity fed by metering, and it only writes state when audio
