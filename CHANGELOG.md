@@ -1,5 +1,43 @@
 # Changelog
 
+## v2.5.2 - 2026-08-17
+
+### The idle panel could not start
+
+The meter window has an idle panel for when the unit is away. It keyed on the
+levels being absent - but the meter pushes a frame on its own timer whether
+the unit is there or not, and with it away that frame carries sixteen
+silences: an array, not nothing. So the panel could not start at all while the
+card was subscribed, which is every moment it is on screen.
+
+The frame has always stated the connection outright. It is now read, and the
+idle panel keys on that instead.
+
+### Off means off, whichever meter was on screen
+
+With the unit unreachable the window is dead space no matter what is feeding
+it. A meter fed from somewhere else entirely - a spectrum off a microphone,
+say - carried on measuring the room quite happily with the unit in standby,
+which is honest and wrong: the window belongs to the unit.
+
+- `gone_entity` tells such a meter which entity says whether the unit is
+  there. With it away the meter empties and the idle panel takes the window.
+- The furniture goes with it - the dB scale, its rules, the row of numbers
+  under the plot. A window that is off should look like a window, not like an
+  empty chart.
+- Anything that cannot be polled counts: `off`, `unavailable`, `unknown`,
+  `standby`. A sleep state that an API call could wake is the same question
+  with a different name, so it needs no new code.
+
+### The meter goes back to the channels when the unit wakes
+
+Coming back is a fresh start, and what the panel is for is the unit's own
+sixteen channels - a spectrum left up from last night should not be what
+greets it. Only on the away-to-here edge, so the choice stays the user's for
+as long as the unit is up, and every open dashboard writes the same value on
+the same edge so the first one to arrive is the only one that writes. Off with
+`wake_to_channels: false`.
+
 ## v2.5.1 - 2026-08-17
 
 ### Auto dim: the display follows the sun

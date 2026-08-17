@@ -320,6 +320,14 @@ const DEFAULTS = {
   entity: null,
   attribute: null,
 
+  // An entity that says whether the UNIT is there, for a meter whose data
+  // does not come from it. A spectrum off a microphone carries on measuring
+  // the room quite happily with the Tide16 in standby - which is honest, and
+  // wrong: the window belongs to the unit, and a panel that is off should
+  // look off whichever meter was last on screen.
+  gone_entity: null,
+  gone_states: ['off', 'unavailable', 'unknown', 'standby', 'not connected'],
+
   // How many columns. Null means the plate's 16, whose pitch was measured
   // off the artwork and must not be recomputed. Any other count divides the
   // window evenly.
@@ -426,6 +434,7 @@ class Tide16Bars extends HTMLElement {
     this._onScreen = false;
     this._io = null;
     this._live = null; // the last frame off the socket
+    this._connected = null; // what that frame said about the unit being there
     this._pending = false; // a subscribe is in flight
     this._unsub = null; // resolved unsubscribe, once the socket answers
     this._sub = 0; // generation, so a late subscribe can't outlive its request
@@ -527,7 +536,7 @@ class Tide16Bars extends HTMLElement {
     // that evaluates the idle panel. With the unit off the Tide16
     // entities are static, so waiting for the next hass update meant the
     // panel often never began at all: 4 of 6 fresh loads played nothing.
-    if (wanted) this._syncIdle(this._levels() === null);
+    if (wanted) this._syncIdle(this._gone());
     else this._stopIdle();
   }
 
@@ -540,6 +549,11 @@ class Tide16Bars extends HTMLElement {
         (frame) => {
           if (generation !== this._sub) return;
           this._live = Array.isArray(frame && frame.levels) ? frame.levels : null;
+          // Whether the unit is actually there. The frame has always said so;
+          // nothing read it, and the idle panel paid for that - see _gone().
+          this._connected = frame && typeof frame.connected === 'boolean'
+            ? frame.connected
+            : null;
           this._render();
         },
         { type: this._cfg.subscribe }
@@ -559,12 +573,14 @@ class Tide16Bars extends HTMLElement {
         // No integration, or an older one without the command: the meter
         // simply stays empty, which is what it does with no signal anyway.
         this._live = null;
+        this._connected = null;
       });
   }
 
   _unsubscribe() {
     this._sub += 1; // invalidates any subscribe still in flight
     this._live = null;
+    this._connected = null;
     if (!this._unsub) return;
     const off = this._unsub;
     this._unsub = null;
@@ -589,6 +605,10 @@ class Tide16Bars extends HTMLElement {
     this._peakUntil = new Array(geom.n).fill(0);
     this._dots = [];
     this._lit = [];
+    // The furniture around the plot - the scale, its rules, the row of
+    // numbers. It goes with the plot when the unit does: a window that is
+    // off should be a window, not an empty chart.
+    this._chrome = [];
     this._peaks_el = [];
     Object.assign(this.style, {
       display: 'block',
@@ -716,6 +736,7 @@ class Tide16Bars extends HTMLElement {
       row.appendChild(cell);
     }
     this.appendChild(row);
+    this._chrome.push(row);
   }
 
   /* -- idle panel ---------------------------------------------------- */
@@ -754,6 +775,28 @@ class Tide16Bars extends HTMLElement {
     this._idleRow = -1;
     this._idleAnim = null;
     this._idleTimer = null;
+  }
+
+  /** Whether the unit is away - which is what the idle panel is for, and not
+   * the same question as whether there is data.
+   *
+   * The meter pushes a frame on its own timer whether the unit is there or
+   * not, and with it away that frame carries sixteen silences: an array, not
+   * null. So keying the panel on a missing array meant it could not start at
+   * all while the card was subscribed, which is every moment it is on screen.
+   * The frame states the connection outright; ask it.
+   */
+  _gone() {
+    // An explicit entity wins: it is the only thing a mic-fed meter can ask.
+    const watch = this._cfg.gone_entity;
+    if (watch) {
+      const st = this._hass ? this._hass.states[watch] : null;
+      if (!st) return true;
+      return (this._cfg.gone_states || []).indexOf(String(st.state)) !== -1;
+    }
+    if (this._cfg.source === 'entity') return this._levels() === null;
+    if (this._connected === false) return true;
+    return this._levels() === null;
   }
 
   /* Called on every hass update. `quiet` means the device is gone, not
@@ -990,6 +1033,7 @@ class Tide16Bars extends HTMLElement {
         pointerEvents: 'none',
       });
       this.appendChild(rule);
+      this._chrome.push(rule);
 
       const inGutter = geom.inset > 0;
       const label = document.createElement('div');
@@ -1011,6 +1055,7 @@ class Tide16Bars extends HTMLElement {
       });
       label.textContent = `${Math.round(v)}${c.axis_suffix}`;
       this.appendChild(label);
+      this._chrome.push(label);
     }
   }
 
@@ -1140,11 +1185,21 @@ class Tide16Bars extends HTMLElement {
 
   _render() {
     if (!this._bars.length) return;
-    const levels = this._levels();
-    // No levels at all means the entity is gone with the unit - the meter
-    // window is then dead space. Checked before the early return below,
-    // so an odd scale can't strand the idle panel on screen.
-    this._syncIdle(levels === null);
+    // With the unit away the window is dead space whatever is feeding it, so
+    // the meter empties rather than carrying on measuring a room nobody is
+    // listening to. Checked before the early return below, so an odd scale
+    // can't strand the idle panel on screen.
+    const gone = this._gone();
+    const levels = gone ? null : this._levels();
+    this._syncIdle(gone);
+    if (gone !== this._chromeHidden) {
+      this._chromeHidden = gone;
+      for (const el of this._chrome || []) {
+        // visibility, not display: the row under the meter is positioned
+        // against the box and taking it out of flow would move things.
+        el.style.visibility = gone ? 'hidden' : '';
+      }
+    }
     const { floor, ceiling } = this._scale();
     const span = ceiling - floor;
     if (!(span > 0)) return;
@@ -3780,7 +3835,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.1",
+        "title": "v2.5.2",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -4108,10 +4163,49 @@ class Tide16Panel extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._card) this._card.hass = hass;
+    this._wakeToChannels();
   }
 
   get hass() {
     return this._hass;
+  }
+
+  /** Put the meter back on the DSP channels when the unit comes back.
+   *
+   * Off means off: the unit cannot be polled at all, and the window shows the
+   * idle panel whichever meter was last chosen. Coming back is a fresh start,
+   * and the thing the panel is for is the unit's own sixteen channels - so a
+   * spectrum left up from last night should not be what greets it. A future
+   * sleep state behaves the same way, because it is the same question:
+   * can we talk to it or not.
+   *
+   * Only on the transition, so the choice is still the user's for as long as
+   * the unit stays up. Every open dashboard runs this, and they all set the
+   * same value on the same edge - the check below means the first one to
+   * arrive is the only one that writes.
+   */
+  _wakeToChannels() {
+    const spec = this._config.spectrum;
+    if (!spec || !spec.mode_entity || spec.wake_to_channels === false) return;
+    const hass = this._hass;
+    if (!hass) return;
+
+    const watch = spec.wake_entity || 'media_player.tide16';
+    const away = spec.wake_states || WAKE_AWAY_STATES;
+    const st = hass.states[watch];
+    const gone = !st || away.indexOf(String(st.state)) !== -1;
+
+    const was = this._unitGone;
+    this._unitGone = gone;
+    if (was !== true || gone) return; // only the away -> here edge
+
+    const channels = spec.channels_state || 'Channels';
+    const mode = hass.states[spec.mode_entity];
+    if (!mode || String(mode.state) === channels) return;
+    hass.callService('input_select', 'select_option', {
+      entity_id: spec.mode_entity,
+      option: channels,
+    });
   }
 
   async _render() {
@@ -4301,6 +4395,11 @@ if (!tide16FirstRegistry.get('ha-card')) {
  * property rather than a rebuild of the card. Without it the spectrum simply
  * replaces the channels.
  */
+// What counts as the unit being unreachable. Off is off - it cannot be polled
+// at all - and a sleep state that an API call could wake would be the same
+// question with a different name, so it belongs on this list too.
+const WAKE_AWAY_STATES = ['off', 'unavailable', 'unknown', 'standby'];
+
 function withSpectrum(layout, spec) {
   if (!spec || !spec.entity) return layout;
   const els = layout.elements || [];
@@ -4335,10 +4434,11 @@ function withSpectrum(layout, spec) {
     // lagging the room - because it is. Overridable, like everything here.
     attack_ms: 45,
     decay_db_s: 55,
-    // A spectrum has no channels to name and no silence to fill: the idle
-    // scroller belongs to the unit being off, which is not what an empty
-    // spectrum means.
-    idle: false,
+    // The unit being in standby is the one thing this meter cannot see for
+    // itself - its numbers come from elsewhere entirely - so it is told which
+    // entity to watch. With the unit away it empties and the idle panel takes
+    // the window, exactly as the channel meter does.
+    gone_entity: 'media_player.tide16',
     ...rest,
   };
 
@@ -4374,7 +4474,7 @@ function withSpectrum(layout, spec) {
   return layout;
 }
 
-const TIDE16_VERSION = '2.5.1';
+const TIDE16_VERSION = '2.5.2';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
