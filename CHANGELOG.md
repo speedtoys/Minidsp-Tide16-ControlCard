@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.4.4 - 2026-08-16
+
+**Peak-hold markers are off by default**, and the meter's ballistics are
+eased: attack 10ms to 45ms, decay 20 to 40 dB/s.  The rise is smoothed rather
+than instant - still well inside one 250ms data frame, so no peak is missed -
+and a bar now falls the full window in about 2.3s instead of 4.5s.
+
+**`peak: false` actually works now.**  It never did: the guard in the
+ballistics loop tested `_peaks`, the VALUE array, which is built for all 16
+channels whatever the config says.  The ELEMENTS in `_peaks_el` only exist
+when markers are on, so turning them off walked into an undefined element on
+the first channel, threw, and took the whole animation loop with it - no bar
+was drawn at all.  It tests `_peaks_el` now.
+
 ## v2.4.3 - 2026-08-16
 
 **The meter is absolute now, like the hardware's own.**

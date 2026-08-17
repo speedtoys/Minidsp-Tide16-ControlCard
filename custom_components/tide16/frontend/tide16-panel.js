@@ -288,9 +288,9 @@ const DEFAULTS = {
   // itself is long gone by the time the eye gets there.
   //
   // Set decay_db_s to 0 to go back to the old symmetric CSS glide.
-  attack_ms: 10,
-  decay_db_s: 20,
-  peak: true,
+  attack_ms: 45,
+  decay_db_s: 40,
+  peak: false,
   peak_hold_ms: 1200,
   peak_decay_db_s: 8,
   peak_height_px: 2,
@@ -779,7 +779,7 @@ class Tide16Bars extends HTMLElement {
       }
       if (Math.abs(target - cur) > 0.01) pending = true;
 
-      if (!this._peaks.length) continue;
+      if (!this._peaks_el.length) continue;
       let peak = this._peaks[i] || 0;
       if (cur >= peak) {
         peak = cur;
@@ -3116,7 +3116,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.4.3",
+        "title": "v2.4.4",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -3617,7 +3617,7 @@ if (!tide16FirstRegistry.get('ha-card')) {
 // one glance in the console rather than a guess - the frontend caches
 // /local/ hard, and the resource URL's ?v= is the only thing that busts
 // it.
-const TIDE16_VERSION = '2.4.3';
+const TIDE16_VERSION = '2.4.4';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
