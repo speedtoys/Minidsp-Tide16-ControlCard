@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.5.5 - 2026-08-22
+
+### The preset button was lit from the wrong direction
+
+The Filter Preset cap arrived in v2.5.4 lit from above, and the standby knob
+it sits under is not.  The knob is baked into the plate art and its light
+comes in horizontally from the RIGHT: measured off `plate-v3.png`, its
+specular rim peaks at 0 degrees at 222 luma against a 147 face, and that face
+falls away to 16 at 180 degrees.  A cap lit from the top beside a knob lit
+from the right is two light sources on one panel, which is the one thing
+photoreal artwork cannot survive.
+
+The cap is now lit on the knob's own angle - a bright right flank falling to
+near-black at the left, with a specular strip down the right edge the way the
+knob carries one round its rim, and the shadow it throws on the plate moved
+from directly beneath it to down-and-LEFT, which is where a light on the right
+puts it.  Pressed, the bright flank swaps to the left: the face has sunk into
+the panel, so the rim on the right now stands between it and the light.
+
+The skirt did not move.  That is viewpoint, not lighting - it is the side wall
+of a button seen from slightly above, and it reads the same whichever way the
+light comes in.
+
 ## v2.5.4 - 2026-08-22
 
 ### The filter preset is a control now, not a readout

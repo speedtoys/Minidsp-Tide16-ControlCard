@@ -3133,7 +3133,7 @@ const SELECT_DEFAULTS = {
   // how far the cap stands off the plate. The box holds cap AND skirt, so
   // raising this shortens the face rather than growing the element.
   lift: '0.40cqw',
-  border: '#3f434a', // the sides; the top and bottom edges are lit separately
+  border: '#3f434a', // the base edge; each side is then lit for itself
   border_hover: '#a3a8b1',
   // rows visible before the list scrolls; the viewport can cut it shorter
   menu_rows: 6,
@@ -3210,13 +3210,24 @@ class Tide16Select extends HTMLElement {
           color: ${c.title_color};
           pointer-events: none;
         }
-        /* A cap standing proud of the panel. Lit from ABOVE - bright at the
-           top, dark at the bottom - which is what reads as convex; the same
-           gradient flipped is the dish under the Reboot glyph. The hard
-           un-blurred shadow directly beneath is the SKIRT, the side wall of
-           the button, and it is what gives the thing height; the blurred one
-           under that is what it throws on the plate. The box holds both, so
-           the face stops one lift short of the bottom edge. */
+        /* A cap standing proud of the panel, lit from the RIGHT.
+           
+           The angle is not a choice - it is measured off plate-v3. The
+           standby knob beside this button is baked into the art and its
+           light comes in horizontally from the right: its specular rim peaks
+           at 0deg (222 luma against a 147 body) and its face falls away to
+           16 at 180deg. A cap lit from the top next to a knob lit from the
+           right is two light sources on one panel, which is the one thing
+           photoreal artwork cannot survive.
+           
+           So: bright along the right edge, falling to near-black at the
+           left, with a specular strip down the right the way the knob
+           carries one round its rim. The hard un-blurred offset beneath is
+           the SKIRT, the side wall of the button - that is viewpoint, not
+           light, and it stays put; the blurred shadow is what the cap throws
+           on the plate, and with the light on the right that falls to the
+           LEFT. The box holds cap and skirt both, so the face stops one lift
+           short of the bottom edge. */
         .cap {
           position: absolute;
           left: 0;
@@ -3236,28 +3247,32 @@ class Tide16Select extends HTMLElement {
              single uniform border draws all four the same and the cap goes
              flat however strong the gradient behind it is. */
           border: 1px solid ${c.border};
-          border-top-color: #6e727a;
-          border-bottom-color: #0c0e11;
+          /* the edge facing the light, and the one hiding from it */
+          border-right-color: #7a8089;
+          border-left-color: #0c0e11;
+          border-top-color: #4b5058;
+          border-bottom-color: #15181c;
           background:
-            /* the sides curving away from the light, drawn over... */
-            linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 9%,
-                            rgba(0,0,0,0) 91%, rgba(0,0,0,0.35) 100%),
-            /* ...the face itself, lit from above: a bright crown falling to a
-               dark lower lip. This is the whole convexity cue, and it is the
-               same gradient the Reboot dish uses upside down. */
-            linear-gradient(180deg, #4b4f55 0%, #3c4046 26%, #2a2d32 62%,
-                            #1c1f22 88%, #16181b 100%);
+            /* the top and bottom of the cap rolling away, drawn over... */
+            linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0) 20%,
+                            rgba(0,0,0,0) 76%, rgba(0,0,0,0.28) 100%),
+            /* ...the face itself, lit from the right, on the knob's own ramp:
+               a bright flank at 0deg falling to near-black at 180deg. */
+            linear-gradient(270deg, #565b62 0%, #464a50 18%, #33363b 52%,
+                            #212429 82%, #17191c 100%);
           box-shadow:
-            /* the lit crown of the cap */
-            inset 0 1px 0 rgba(255, 255, 255, 0.34),
-            inset 0 2px 2px -1px rgba(255, 255, 255, 0.08),
-            /* its shaded underside, curling back under the rim */
-            inset 0 -3px 5px -2px rgba(0, 0, 0, 0.9),
+            /* the specular down the right edge - the knob's rim reads 222
+               against its own 147 face, so the cap gets one too */
+            inset -1px 0 0 rgba(255, 255, 255, 0.40),
+            inset -4px 0 5px -3px rgba(255, 255, 255, 0.16),
+            /* the left flank, curling away into the dark */
+            inset 3px 0 5px -2px rgba(0, 0, 0, 0.85),
             /* the side wall the cap stands on - a hard, UNBLURRED offset, so
                it reads as a wall and not as another shadow - and then the
-               shadow that wall throws on the plate */
+               shadow it throws on the plate, thrown LEFT because that is
+               where a light on the right puts it */
             0 ${c.lift} 0 -1px #0b0d10,
-            0 calc(${c.lift} + 2px) 6px rgba(0, 0, 0, 0.9);
+            -4px calc(${c.lift} + 1px) 6px rgba(0, 0, 0, 0.9);
           font-size: ${c.size};
           font-weight: ${c.weight};
           line-height: 1;
@@ -3272,17 +3287,23 @@ class Tide16Select extends HTMLElement {
         /* Pressed, and it STAYS pressed while the list is open: the cap sits
            down on its skirt, the skirt is gone, and the face darkens under
            the rim's shadow. */
+        /* Pressed, and the light does not move with it: the face has sunk
+           into the panel, so the rim on the RIGHT now stands between it and
+           the light and throws a shadow across it, while what light still
+           reaches the recess lands on the far LEFT wall. The bright flank
+           swapping sides is the whole cue - exactly the inversion the Reboot
+           dish uses, turned through the same 90 degrees as everything else
+           here. */
         .cap.down {
           transform: translateY(${c.lift});
-          border-top-color: #0c0e11;
-          border-bottom-color: #3a3e44;
-          background: linear-gradient(180deg, #131518 0%, #1f2226 45%, #2c2f34 100%);
+          border-right-color: #0c0e11;
+          border-left-color: #3a3e44;
+          border-top-color: #16191d;
+          background: linear-gradient(90deg, #2c3035 0%, #212428 42%, #15171a 100%);
           box-shadow:
-            /* the rim now casting INTO the button, which is what a pressed
-               cap looks like: the crown is gone and the light is underneath */
-            inset 0 4px 6px -2px rgba(0, 0, 0, 0.95),
-            inset 0 -1px 0 rgba(255, 255, 255, 0.12),
-            0 1px 2px rgba(0, 0, 0, 0.6);
+            inset -4px 0 6px -2px rgba(0, 0, 0, 0.95),
+            inset 1px 0 0 rgba(255, 255, 255, 0.10),
+            -1px 1px 2px rgba(0, 0, 0, 0.6);
         }
         .cap.down .num, .cap.down .name { opacity: 0.82; }
         /* Nothing to choose from: no pointer, no press, pushed back - the
@@ -4412,7 +4433,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.4",
+        "title": "v2.5.5",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -5065,7 +5086,7 @@ function withSpectrum(layout, spec) {
   return layout;
 }
 
-const TIDE16_VERSION = '2.5.4';
+const TIDE16_VERSION = '2.5.5';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,
