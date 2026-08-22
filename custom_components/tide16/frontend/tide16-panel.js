@@ -356,6 +356,12 @@ const DEFAULTS = {
   // The topmost lit dot is the level itself; the ones under it are just the
   // trail, so it is drawn several times their size and the eye lands on it.
   dot_head_scale: 1.8,
+  // The single dot directly under the head, left at trail size but lit in a
+  // deep azure neon blue. The head says where the band is now; this says
+  // which way it just came from, and one dot of a second colour reads at a
+  // glance without turning the trail into a gradient. Only this one dot is
+  // recoloured - everything below it stays `dot_color`.
+  dot_neck_color: '#0B5CFF',
   dot_radius: '50%',
   // The floor of the column is where every band sits when there is nothing
   // playing, and 31 columns of bottom dots at full strength reads as a solid
@@ -1083,6 +1089,7 @@ class Tide16Bars extends HTMLElement {
     if (pct > 0 && lit === 0) lit = 1;
     if (lit === this._lit[i]) return;
     const head = this._cfg.dot_head_scale;
+    const neck = this._cfg.dot_neck_color || this._cfg.dot_color;
     for (let r = 0; r < dots.length; r++) {
       const on = r < lit;
       const st = dots[r].style;
@@ -1093,6 +1100,11 @@ class Tide16Bars extends HTMLElement {
       const scale = on && r === lit - 1 ? ` scale(${head})` : '';
       const tf = `translateY(50%)${scale}`;
       if (st.transform !== tf) st.transform = tf;
+      // ...and only the one directly under it takes the neck colour. Both
+      // are reassigned every time `lit` moves, so neither leaves a mark
+      // behind at the row it used to occupy.
+      const bg = on && r === lit - 2 ? neck : this._cfg.dot_color;
+      if (st.background !== bg) st.background = bg;
     }
     this._lit[i] = lit;
   }
@@ -3835,7 +3847,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.2",
+        "title": "v2.5.3",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -4474,7 +4486,7 @@ function withSpectrum(layout, spec) {
   return layout;
 }
 
-const TIDE16_VERSION = '2.5.2';
+const TIDE16_VERSION = '2.5.3';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

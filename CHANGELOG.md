@@ -1,5 +1,36 @@
 # Changelog
 
+## v2.5.3 - 2026-08-21
+
+### The recorder was warning about the settings tables, twice a boot
+
+The 16-wide tables carry their whole block in the entity's attributes - the
+PEQ is about 30 kB of it, the routing matrix about 19 - and the recorder
+refuses to store attributes over 16 kB. So every one of those states logged
+
+    State attributes for sensor.tide16_parametric_eq exceed maximum size of
+    16384 bytes. This can cause database performance issues; Attributes will
+    not be stored
+
+and then stored nothing anyway. Nothing was broken by it, but a warning that
+comes back on every boot is a warning.
+
+The tables now tell the recorder up front not to record their attributes,
+which is what the message is asking for. Nothing about the live entity
+changes: the attributes are still there for templates, automations and the
+card, and the state - a count - is still recorded as before. It is only the
+history of the blob that goes, and a filter curve has no history worth
+keeping; it is configuration, and it changes when someone changes it.
+
+### A blue dot under the head, in the spectrum
+
+In the analyser the topmost lit dot is drawn several times the size of the
+trail beneath it, so the eye lands on the level. The one dot directly under
+it is now lit in a deep azure neon blue at the ordinary trail size, which
+gives the head an edge to sit on and says which way the band just came from
+without turning the whole trail into a gradient. `dot_neck_color` sets it;
+everything below that one dot is still `dot_color`.
+
 ## v2.5.2 - 2026-08-17
 
 ### The idle panel could not start

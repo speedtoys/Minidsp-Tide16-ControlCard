@@ -15,7 +15,7 @@ from typing import Any, Final
 
 from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory
+from homeassistant.const import MATCH_ALL, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -248,7 +248,12 @@ async def async_setup_entry(
     coordinator: Tide16Coordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [Tide16Sensor(coordinator, d) for d in SENSORS]
-        + [Tide16SettingSensor(coordinator, s) for s in of_kind(SENSOR)]
+        + [
+            (Tide16TableSensor if s.key in TABLE_STATES else Tide16SettingSensor)(
+                coordinator, s
+            )
+            for s in of_kind(SENSOR)
+        ]
         + [Tide16AutoDimTarget(coordinator)]
     )
 
@@ -314,6 +319,27 @@ class Tide16SettingSensor(Tide16Entity, SensorEntity):
         if self._setting.attributes is None:
             return None
         return self._setting.attributes(self._settings)
+
+
+class Tide16TableSensor(Tide16SettingSensor):
+    """A 16-wide table, whose attributes the recorder is told not to store.
+
+    These carry the whole block in their attributes - the PEQ is about 30 kB
+    of it, the routing matrix about 19 - and the recorder refuses anything
+    over 16 kB, so every write logged a warning and stored nothing:
+
+        State attributes for sensor.tide16_parametric_eq exceed maximum size
+        of 16384 bytes. Attributes will not be stored
+
+    Saying so up front is what the warning is asking for.  The attributes are
+    still live for templates, automations and the card; it is only the history
+    that skips them, and a filter curve has no history worth keeping - it is
+    configuration, and it changes when someone changes it.  The state is a
+    count, so it is small, and it stays recorded.
+    """
+
+    # Keeps device class, state class, unit and friendly name; drops the rest.
+    _unrecorded_attributes = frozenset({MATCH_ALL})
 
 
 class Tide16AutoDimTarget(Tide16Entity, SensorEntity):
