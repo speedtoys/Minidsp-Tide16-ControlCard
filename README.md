@@ -17,7 +17,7 @@ assigned and the legend names them; yours will show your own layout.*
 |---|---|
 | `custom_components/tide16/` | The integration: a WebSocket client for the Tide16, every entity the panel needs, and the card itself |
 | `custom_components/tide16/api/` | The protocol on its own, with no Home Assistant imports - runnable from a terminal |
-| `custom_components/tide16/frontend/` | The card - `custom:tide16-panel` - plus the seven `picture-elements` elements it is built from, the plate and the glyphs.  Served by the integration at `/tide16_static/` |
+| `custom_components/tide16/frontend/` | The card - `custom:tide16-panel` - plus the nine `picture-elements` elements it is built from, the plate and the glyphs.  Served by the integration at `/tide16_static/` |
 | `lovelace/tide16-panel.yaml` | An example view, for the dedicated full-page look.  Not needed to use the card |
 | `docs/panel-layout.annotated.yaml` | Where every element box on the plate is measured and explained.  The card carries the same geometry as data; `tools/build_layout.py` writes it and `tools/check_layout_sync.py` proves the two agree |
 

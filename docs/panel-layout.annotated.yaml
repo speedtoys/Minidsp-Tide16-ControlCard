@@ -773,7 +773,7 @@
               # One of three stamps that must agree - the others are the
               # manifest version and TIDE16_VERSION in the module.
               - type: custom:tide16-readout
-                title: v2.5.3
+                title: v2.5.4
                 title_size: 0.980cqw
                 title_color: '#000'
                 title_gap: '0'
@@ -1056,4 +1056,36 @@
                 style:
                   left: 36.332%
                   top: 64.723%
+                  transform: translate(0, 0)
+              # The filter preset, as a drop-down - the one control on the
+              # plate that opens something.
+              #
+              # It sits in the void under the standby knob: x1060..1237,
+              # y294..341, centred on the knob's own x1149 so the label, the
+              # button and the knob share one axis. The void is bounded by the
+              # Profiles column ending at x1066 on the left, the Modes column
+              # starting at x1244 on the right, and the channel legend at
+              # y345.5 below - which is why the box stops at y341 and cannot
+              # be pushed further down.
+              #
+              # Type is 1.070cqw, the size the Profiles and Modes columns
+              # beside it use, so the plate's right-hand void reads as three
+              # controls of one family rather than three unrelated widgets.
+              #
+              # The heading is drawn by the element itself, hanging above the
+              # box rather than sitting inside it, so the box measured here IS
+              # the button - the same rule the rest of this file follows.
+              #
+              # Every preset slot on this hardware reports an empty name, so
+              # the face reads "1:" today; a named slot arrives as "1: Atmos"
+              # and the element scrolls the NAME, never the number.
+              - type: custom:tide16-select
+                entity: select.tide16_filter_preset
+                title: Filter Preset
+                hint: Choose a filter preset
+                style:
+                  left: 53.266%
+                  top: 73.500%
+                  width: 8.945%
+                  height: 11.750%
                   transform: translate(0, 0)

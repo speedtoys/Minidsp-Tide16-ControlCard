@@ -3073,10 +3073,575 @@ if (!customElements.get('tide16-inputs')) {
   customElements.define('tide16-inputs', Tide16Inputs);
 }
 
+/* =====================================================================
+ * tide16-select - the panel's one drop-down, drawn as a raised button.
+ *
+ * Reads a `select` entity: its state is the current option and its
+ * `options` attribute is the list. Tapping the button opens that list
+ * below it; picking a row calls select.select_option.
+ *
+ * WHY A BUTTON AND NOT A <select>: the plate is hardware, and a native
+ * control is the one thing on it that would look like a web page. So the
+ * face is a cap milled proud of the panel - the exact inverse of the
+ * concave dish tide16-glyph draws for Reboot, and lit the opposite way
+ * round: bright at the TOP, with a skirt under it and a shadow on the
+ * plate. It stays PRESSED for as long as the list is open, so the panel
+ * always says whether it is waiting for an answer.
+ *
+ * THE LABEL IS TWO FIELDS, not one string. Every preset slot on this
+ * hardware reports an empty name, so today the options are bare ids and
+ * the face reads "1:". A named slot arrives as "1: Atmos" and the number
+ * still has to stay put and stay legible - so the id is drawn fixed and
+ * the NAME is the part that scrolls when it will not fit. Splitting on
+ * the first colon is what the integration's preset_label builds, and the
+ * two halves are styled separately here.
+ *
+ * WHY THE LIST IS PORTALLED TO document.body: the plate is clipped. The
+ * card's wrapper sets container-type: inline-size (every font on the
+ * panel is sized in cqw), and container-type implies layout containment,
+ * which makes that wrapper the containing block for FIXED descendants
+ * too - so position: fixed does not escape its overflow: hidden the way
+ * it normally would. Inside the plate there are about 55 canvas px below
+ * this button before the artwork ends: one row. The list therefore lives
+ * outside the card entirely, in its own shadow root so the dashboard's
+ * CSS cannot reach it, positioned from the button's own rect and moved
+ * with it on scroll and resize.
+ *
+ * The list is sized in PIXELS, not cqw: outside the card there is no
+ * container for cqw to resolve against. The face's computed font-size is
+ * read back and the rows are built from it, so the two match at any card
+ * width.
+ *
+ * No font-family: inherits the frontend's, like every other readout.
+ */
+
+const SELECT_DEFAULTS = {
+  entity: null,
+  // drawn ABOVE the box in the plate's heading style, so the YAML box is
+  // exactly the button - same rule the rest of the card follows
+  title: null,
+  // The heading and the face both read at the size the Dolby Profiles and
+  // Modes columns beside them use, so the three controls in the plate's
+  // right-hand void are one family rather than three.
+  title_size: '1.070cqw',
+  title_color: '#BFC0C0',
+  title_gap: '0.16cqw',
+  size: '1.070cqw',
+  weight: '700',
+  color: '#FFFFFF',
+  radius: '0.28cqw',
+  // how far the cap stands off the plate. The box holds cap AND skirt, so
+  // raising this shortens the face rather than growing the element.
+  lift: '0.40cqw',
+  border: '#3f434a', // the sides; the top and bottom edges are lit separately
+  border_hover: '#a3a8b1',
+  // rows visible before the list scrolls; the viewport can cut it shorter
+  menu_rows: 6,
+  menu_color: '#B7B8B8',
+  menu_active_color: '#FFFFFF',
+  scroll_speed: 14, // CSS px/s, as in tide16-readout
+  placeholder: '-',
+  hint: null,
+};
+
+// Row height and padding as multiples of the face's own font-size, so the
+// list stays in proportion however wide the card is drawn.
+const MENU_ROW_EM = 2.1;
+const MENU_PAD_EM = 0.8;
+const MENU_GAP_PX = 4; // between the button and the list it drops
+
+/* "1: Atmos" -> {num: "1", name: "Atmos"}; "1" -> {num: "1", name: ""}.
+   Split on the FIRST colon only - a preset could well be named "Movie: 5.1"
+   and the id is only ever the leading field. */
+function splitOption(option) {
+  const s = option == null ? '' : String(option);
+  const i = s.indexOf(':');
+  if (i < 0) return { num: s.trim(), name: '' };
+  return { num: s.slice(0, i).trim(), name: s.slice(i + 1).trim() };
+}
+
+class Tide16Select extends HTMLElement {
+  constructor() {
+    super();
+    this._cfg = { ...SELECT_DEFAULTS };
+    this._hass = null;
+    this._open = false;
+    this._options = [];
+    this._current = null;
+  }
+
+  setConfig(config) {
+    this._cfg = { ...SELECT_DEFAULTS, ...(config || {}) };
+    if (!this._cfg.entity) {
+      throw new Error('tide16-select: needs an `entity`');
+    }
+    this._build();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._paint();
+  }
+
+  disconnectedCallback() {
+    // A view switch removes the card but not a node parented on document.body
+    this._close();
+  }
+
+  _build() {
+    const c = this._cfg;
+    const root = this.shadowRoot || this.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        :host { display: block; position: absolute; }
+        /* The heading hangs above the box rather than sitting inside it, so
+           the box the YAML measures IS the button - re-positioning the
+           element can only move the pair, never resize the face. */
+        .title {
+          position: absolute;
+          left: 0;
+          right: 0;
+          bottom: calc(100% + ${c.title_gap});
+          text-align: center;
+          white-space: nowrap;
+          font-size: ${c.title_size};
+          font-weight: 300;
+          line-height: 1;
+          color: ${c.title_color};
+          pointer-events: none;
+        }
+        /* A cap standing proud of the panel. Lit from ABOVE - bright at the
+           top, dark at the bottom - which is what reads as convex; the same
+           gradient flipped is the dish under the Reboot glyph. The hard
+           un-blurred shadow directly beneath is the SKIRT, the side wall of
+           the button, and it is what gives the thing height; the blurred one
+           under that is what it throws on the plate. The box holds both, so
+           the face stops one lift short of the bottom edge. */
+        .cap {
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: 0;
+          bottom: ${c.lift};
+          box-sizing: border-box;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.34em;
+          overflow: hidden;
+          border-radius: ${c.radius};
+          /* Three different edges, because they are three different surfaces:
+             the top catches the light, the sides are in half shadow, and the
+             bottom is the underside of the cap where the skirt begins. A
+             single uniform border draws all four the same and the cap goes
+             flat however strong the gradient behind it is. */
+          border: 1px solid ${c.border};
+          border-top-color: #6e727a;
+          border-bottom-color: #0c0e11;
+          background:
+            /* the sides curving away from the light, drawn over... */
+            linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 9%,
+                            rgba(0,0,0,0) 91%, rgba(0,0,0,0.35) 100%),
+            /* ...the face itself, lit from above: a bright crown falling to a
+               dark lower lip. This is the whole convexity cue, and it is the
+               same gradient the Reboot dish uses upside down. */
+            linear-gradient(180deg, #4b4f55 0%, #3c4046 26%, #2a2d32 62%,
+                            #1c1f22 88%, #16181b 100%);
+          box-shadow:
+            /* the lit crown of the cap */
+            inset 0 1px 0 rgba(255, 255, 255, 0.34),
+            inset 0 2px 2px -1px rgba(255, 255, 255, 0.08),
+            /* its shaded underside, curling back under the rim */
+            inset 0 -3px 5px -2px rgba(0, 0, 0, 0.9),
+            /* the side wall the cap stands on - a hard, UNBLURRED offset, so
+               it reads as a wall and not as another shadow - and then the
+               shadow that wall throws on the plate */
+            0 ${c.lift} 0 -1px #0b0d10,
+            0 calc(${c.lift} + 2px) 6px rgba(0, 0, 0, 0.9);
+          font-size: ${c.size};
+          font-weight: ${c.weight};
+          line-height: 1;
+          color: ${c.color};
+          letter-spacing: 0.02em;
+          user-select: none;
+          cursor: pointer;
+          transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+        }
+        .cap:hover { border-color: ${c.border_hover}; }
+        .cap:focus-visible { outline: 1px solid ${c.border_hover}; outline-offset: 1px; }
+        /* Pressed, and it STAYS pressed while the list is open: the cap sits
+           down on its skirt, the skirt is gone, and the face darkens under
+           the rim's shadow. */
+        .cap.down {
+          transform: translateY(${c.lift});
+          border-top-color: #0c0e11;
+          border-bottom-color: #3a3e44;
+          background: linear-gradient(180deg, #131518 0%, #1f2226 45%, #2c2f34 100%);
+          box-shadow:
+            /* the rim now casting INTO the button, which is what a pressed
+               cap looks like: the crown is gone and the light is underneath */
+            inset 0 4px 6px -2px rgba(0, 0, 0, 0.95),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+            0 1px 2px rgba(0, 0, 0, 0.6);
+        }
+        .cap.down .num, .cap.down .name { opacity: 0.82; }
+        /* Nothing to choose from: no pointer, no press, pushed back - the
+           same treatment a hidden input gets in tide16-inputs. */
+        .cap.dead {
+          cursor: default;
+          color: #5E5F5F;
+          border-color: #3A3A3A;
+        }
+        .num { flex: none; }
+        /* The name is the half that gives: it shrinks to whatever the cap has
+           left and scrolls inside that, so the number can never be pushed off
+           the button by a long one. min-width: 0 is what lets a nowrap child
+           shrink below its own content at all. */
+        .name { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+        .name.empty { display: none; }
+        .name .txt { display: inline-block; white-space: nowrap; }
+        .name.scrolling .txt {
+          animation: t16-sel-scroll var(--t16-dur) ease-in-out infinite;
+        }
+        @keyframes t16-sel-scroll {
+          0%, 15% { transform: translateX(0); }
+          50%, 65% { transform: translateX(calc(-1 * var(--t16-ov))); }
+          100% { transform: translateX(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .name.scrolling .txt { animation: none; }
+        }
+      </style>
+      ${c.title ? '<div class="title"></div>' : ''}
+      <div class="cap" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
+        <span class="num"></span><span class="name"><span class="txt"></span></span>
+      </div>`;
+
+    if (c.title) root.querySelector('.title').textContent = c.title;
+    this._cap = root.querySelector('.cap');
+    this._num = root.querySelector('.num');
+    this._nameBox = root.querySelector('.name');
+    this._nameTxt = root.querySelector('.name .txt');
+    if (c.hint) this._cap.title = String(c.hint);
+
+    this._cap.addEventListener('click', () => this._toggle());
+    this._cap.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        this._toggle();
+      } else if (ev.key === 'ArrowDown' && !this._open) {
+        ev.preventDefault();
+        this._toggle();
+      }
+    });
+
+    // the plate scales with the window, so what fits on the cap changes too
+    if (!this._ro && typeof ResizeObserver !== 'undefined') {
+      this._ro = new ResizeObserver(() => {
+        this._measure();
+        if (this._open) this._place();
+      });
+      this._ro.observe(this);
+    }
+    this._paint();
+  }
+
+  /* The entity in one shape: the list, the live one, and whether there is
+     anything to choose at all. Everything downstream reads this.
+
+     `unknown` is NOT dead. The unit can be up and answering with the panel
+     still not knowing which slot is live - a reconnect before the index has
+     come back does exactly that - and a button that will not open because a
+     readout has not landed yet is a button that looks broken. Only an
+     unavailable entity, or one with nothing to choose, goes inert. */
+  _read() {
+    const c = this._cfg;
+    const st = this._hass ? this._hass.states[c.entity] : null;
+    const value = st ? String(st.state) : 'unavailable';
+    const live = !!st && value !== 'unavailable';
+    const options = live && Array.isArray(st.attributes.options) ? st.attributes.options : [];
+    return {
+      dead: !live || !options.length,
+      options,
+      current: live && value !== 'unknown' ? value : null,
+    };
+  }
+
+  _paint() {
+    const c = this._cfg;
+    if (!this._cap) return;
+    const { dead, options, current } = this._read();
+
+    this._options = options;
+    this._current = current;
+    this._cap.classList.toggle('dead', dead);
+
+    const { num, name } = current == null ? { num: '', name: '' } : splitOption(current);
+    // The colon belongs to the panel, not to the option string: an unnamed
+    // slot arrives as a bare "1" and still has to read "1:" on the face.
+    const numText = num ? `${num}:` : c.placeholder;
+    let changed = false;
+    if (this._num.textContent !== numText) {
+      this._num.textContent = numText;
+      changed = true;
+    }
+    if (this._nameTxt.textContent !== name) {
+      this._nameTxt.textContent = name;
+      this._nameBox.classList.toggle('empty', !name);
+      changed = true;
+    }
+    // hass ticks at 4 Hz while the meter is on screen and measuring forces
+    // layout, so only remeasure when the text actually moved
+    if (changed) this._measure();
+    if (this._open) this._paintMenu();
+  }
+
+  /* Does the name overflow the cap, and by how much? Measured rather than
+     guessed from character counts - the panel inherits the frontend's font,
+     so the same name is a different width on a different machine. */
+  _measure() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = requestAnimationFrame(() => {
+      this._raf = null;
+      const box = this._nameBox;
+      const txt = this._nameTxt;
+      if (!box || !txt) return;
+      const over = txt.scrollWidth - box.clientWidth;
+      if (over > 0.5) {
+        // travel is 35% of the cycle each way; the rest is the pause at
+        // either end, so scroll_speed stays the speed it says
+        const dur = over / (Number(this._cfg.scroll_speed) * 0.35);
+        box.style.setProperty('--t16-ov', `${over}px`);
+        box.style.setProperty('--t16-dur', `${dur.toFixed(2)}s`);
+        box.classList.add('scrolling');
+      } else {
+        box.classList.remove('scrolling');
+        box.style.removeProperty('--t16-ov');
+        box.style.removeProperty('--t16-dur');
+      }
+    });
+  }
+
+  _toggle() {
+    if (this._open) this._close();
+    else this._openMenu();
+  }
+
+  _openMenu() {
+    const { dead, options } = this._read();
+    if (dead || !options.length) return;
+
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;z-index:9999;left:0;top:0;';
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = `
+      <style>
+        .menu {
+          position: fixed;
+          box-sizing: border-box;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          border-radius: 4px;
+          border: 1px solid #4a4d53;
+          background: #17191c;
+          box-shadow: 0 6px 16px rgba(0, 0, 0, 0.75);
+          padding: 3px 0;
+        }
+        .row {
+          display: flex;
+          align-items: center;
+          gap: 0.34em;
+          white-space: nowrap;
+          overflow: hidden;
+          line-height: 1;
+          color: ${this._cfg.menu_color};
+          cursor: pointer;
+        }
+        .row:hover, .row:focus-visible { background: #2b2e33; outline: none; }
+        .row.on {
+          color: ${this._cfg.menu_active_color};
+          font-weight: 700;
+        }
+        .row .num { flex: none; }
+        .row .name { overflow: hidden; text-overflow: ellipsis; }
+        /* Nothing but numbers to show - which is every preset on this
+           firmware - and a left-aligned column of "1:" under a centred face
+           reads as a mistake. Named slots go back to left-aligned, because
+           that is what a list of words is scanned down. */
+        .menu.numbers .row { justify-content: center; }
+      </style>
+      <div class="menu" role="listbox" tabindex="-1"></div>`;
+    document.body.appendChild(host);
+    this._menuHost = host;
+    this._menu = root.querySelector('.menu');
+
+    this._menu.addEventListener('keydown', (ev) => this._menuKey(ev));
+    this._open = true;
+    this._cap.classList.add('down');
+    this._cap.setAttribute('aria-expanded', 'true');
+    this._paintMenu();
+    this._place();
+
+    // pointerdown, not click: a click that lands on the plate would otherwise
+    // fire the element under it as well as closing this
+    this._onDown = (ev) => {
+      const path = ev.composedPath();
+      if (path.includes(this._menuHost) || path.includes(this._cap)) return;
+      this._close();
+    };
+    this._onKey = (ev) => {
+      if (ev.key === 'Escape') {
+        this._close();
+        this._cap.focus();
+      }
+    };
+    // capture, so a scroller anywhere in the page - a dialog, a sub-view -
+    // moves the list with the button instead of leaving it stranded
+    this._onMove = () => this._place();
+    document.addEventListener('pointerdown', this._onDown, true);
+    document.addEventListener('keydown', this._onKey, true);
+    window.addEventListener('scroll', this._onMove, true);
+    window.addEventListener('resize', this._onMove);
+
+    const live = this._menu.querySelector('.row.on') || this._menu.firstElementChild;
+    if (live) live.focus();
+  }
+
+  _paintMenu() {
+    if (!this._menu) return;
+    const stamp = JSON.stringify([this._options, this._current]);
+    if (stamp === this._menuStamp) return;
+    this._menuStamp = stamp;
+
+    this._menu.textContent = '';
+    this._options.forEach((option) => {
+      const { num, name } = splitOption(option);
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.setAttribute('role', 'option');
+      row.tabIndex = -1;
+      const on = String(option) === String(this._current);
+      row.classList.toggle('on', on);
+      row.setAttribute('aria-selected', on ? 'true' : 'false');
+      const n = document.createElement('span');
+      n.className = 'num';
+      n.textContent = num ? `${num}:` : '';
+      const t = document.createElement('span');
+      t.className = 'name';
+      // textContent, not interpolation, so a preset named with markup in it
+      // stays text
+      t.textContent = name;
+      row.append(n, t);
+      row.addEventListener('click', () => this._pick(option));
+      this._menu.appendChild(row);
+    });
+    this._menu.classList.toggle(
+      'numbers',
+      this._options.every((o) => !splitOption(o).name)
+    );
+    // rows exist now, so their height is known
+    if (this._open) this._place();
+  }
+
+  /* Put the list under the button, in viewport coordinates read off the
+     button itself. Sized in px off the cap's own computed font-size, since
+     cqw has no container to resolve against out here. */
+  _place() {
+    if (!this._menu || !this._cap) return;
+    const r = this._cap.getBoundingClientRect();
+    const fs = parseFloat(getComputedStyle(this._cap).fontSize) || 14;
+    const rowH = fs * MENU_ROW_EM;
+    const pad = fs * MENU_PAD_EM;
+
+    const m = this._menu;
+    m.style.fontSize = `${fs}px`;
+    m.style.minWidth = `${r.width}px`;
+    m.style.maxWidth = `${Math.min(r.width * 2.4, window.innerWidth - 16)}px`;
+    [...m.children].forEach((row) => {
+      row.style.height = `${rowH}px`;
+      row.style.padding = `0 ${pad}px`;
+    });
+
+    // The button is pressed and the list drops from under it, which is the
+    // gesture the panel promises. Below is the default and stays the default
+    // even when it has to scroll; it only flips when below cannot hold two
+    // rows AND above can hold more - a list you have to scroll is workable,
+    // one clipped to half a row is not.
+    const below = window.innerHeight - r.bottom - MENU_GAP_PX - 8;
+    const above = r.top - MENU_GAP_PX - 8;
+    const wanted = this._options.length * rowH + 6;
+    const up = below < rowH * 2 && above > below;
+    const cap = Math.min(wanted, this._cfg.menu_rows * rowH + 6, up ? above : below);
+
+    m.style.maxHeight = `${Math.max(rowH, cap)}px`;
+    m.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8))}px`;
+    if (up) {
+      m.style.top = 'auto';
+      m.style.bottom = `${window.innerHeight - r.top + MENU_GAP_PX}px`;
+    } else {
+      m.style.bottom = 'auto';
+      m.style.top = `${r.bottom + MENU_GAP_PX}px`;
+    }
+  }
+
+  _menuKey(ev) {
+    const rows = [...this._menu.children];
+    const i = rows.indexOf(this._menu.getRootNode().activeElement);
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      const next = ev.key === 'ArrowDown' ? i + 1 : i - 1;
+      const el = rows[(next + rows.length) % rows.length];
+      if (el) el.focus();
+    } else if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault();
+      if (rows[i]) rows[i].click();
+    }
+  }
+
+  _pick(option) {
+    this._close();
+    if (!this._hass) return;
+    this._hass.callService('select', 'select_option', {
+      entity_id: this._cfg.entity,
+      option,
+    });
+  }
+
+  _close() {
+    this._open = false;
+    this._menuStamp = undefined;
+    if (this._cap) {
+      this._cap.classList.remove('down');
+      this._cap.setAttribute('aria-expanded', 'false');
+    }
+    if (this._menuHost) {
+      this._menuHost.remove();
+      this._menuHost = null;
+      this._menu = null;
+    }
+    if (this._onDown) document.removeEventListener('pointerdown', this._onDown, true);
+    if (this._onKey) document.removeEventListener('keydown', this._onKey, true);
+    if (this._onMove) {
+      window.removeEventListener('scroll', this._onMove, true);
+      window.removeEventListener('resize', this._onMove);
+    }
+    this._onDown = this._onKey = this._onMove = null;
+  }
+
+  getCardSize() {
+    return 1;
+  }
+}
+
+if (!customElements.get('tide16-select')) {
+  customElements.define('tide16-select', Tide16Select);
+}
+
+
 /**
  * tide16-panel - the whole front panel, as ONE card.
  *
- * The seven elements above are picture-elements *elements*: each one needs a
+ * The nine elements above are picture-elements *elements*: each one needs a
  * box measured off the plate, and wiring them by hand is the 1000-line view
  * this repo used to ask people to paste. This card is that view, carried
  * inside the module and rendered on demand, so adding the panel to a
@@ -3847,7 +4412,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.3",
+        "title": "v2.5.4",
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -4154,6 +4719,19 @@ const PANEL_LAYOUT = {
           "top": "64.723%",
           "transform": "translate(0, 0)"
         }
+      },
+      {
+        "type": "custom:tide16-select",
+        "entity": "select.tide16_filter_preset",
+        "title": "Filter Preset",
+        "hint": "Choose a filter preset",
+        "style": {
+          "left": "53.266%",
+          "top": "73.500%",
+          "width": "8.945%",
+          "height": "11.750%",
+          "transform": "translate(0, 0)"
+        }
       }
     ]
   };
@@ -4350,6 +4928,7 @@ const TIDE16_ELEMENTS = [
   ['tide16-knob-labels', Tide16KnobLabels],
   ['tide16-readout', Tide16Readout],
   ['tide16-inputs', Tide16Inputs],
+  ['tide16-select', Tide16Select],
   ['tide16-toggle', Tide16Toggle],
   ['tide16-panel', Tide16Panel],
 ];
@@ -4486,7 +5065,7 @@ function withSpectrum(layout, spec) {
   return layout;
 }
 
-const TIDE16_VERSION = '2.5.3';
+const TIDE16_VERSION = '2.5.4';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

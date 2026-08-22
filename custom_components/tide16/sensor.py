@@ -63,6 +63,9 @@ def _rate_khz(data: dict[str, Any]) -> str | None:
 STREAM_SHORT_FORMS: Final = {
     "dolby digital plus with dolby atmos": "DD+ W/Atmos",
     "dolby digital plus without dolby atmos": "DD+ W/O Atmos",
+    # "channel-based" is the only kind of third-party PCM the unit reports,
+    # so the qualifier distinguishes it from nothing and costs half the cell.
+    "third-party channel-based pcm": "Third-party PCM",
 }
 
 

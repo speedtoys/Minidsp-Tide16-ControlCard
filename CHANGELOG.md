@@ -1,5 +1,56 @@
 # Changelog
 
+## v2.5.4 - 2026-08-22
+
+### The filter preset is a control now, not a readout
+
+The plate has always printed which preset the unit is on, under `Preset` in
+the screen's right-hand table, and there has never been a way to change it.
+The void under the standby knob now holds a **Filter Preset** drop-down.
+
+It is drawn as a cap standing proud of the panel - the exact inverse of the
+concave dish the Reboot glyph sits in, and lit the opposite way round: bright
+along the top, a hard skirt beneath it, and a shadow on the plate under that.
+Tapping it sinks the cap onto its skirt and drops the list, and it stays
+pressed for as long as the list is open, so the panel always says whether it
+is waiting for an answer.  Picking a preset - or pressing Escape, or clicking
+away - brings it back up.
+
+Every preset slot on this hardware reports an empty name, so the face reads
+`1:` and the list is a column of numbers.  A firmware or a loaded config that
+names them gives `1: Atmos`, and the two halves are then treated differently:
+the number is drawn fixed and only the NAME scrolls when it will not fit the
+button.  A preset you cannot identify because its number has been pushed off
+the face is no better than no label at all.  The list left-aligns once there
+are names to scan down, and centres while there are only numbers.
+
+Behind it is a new entity, `select.tide16_filter_preset`, built from
+`get_all_presets` and written with `set_preset`.  The slot ids are opaque
+labels, not positions - miniDSP's own notes report units answering 1, 3..12 -
+so nothing here counts through the list.  The unit pushes `preset_change` when
+the preset moves, including from its own web UI, so the panel follows a change
+made anywhere.
+
+One thing worth writing down, because it is not obvious and it decided the
+implementation: the card's wrapper sets `container-type: inline-size`, which
+every font on the panel needs to resolve its `cqw` sizes - and
+`container-type` implies layout containment, which makes that wrapper the
+containing block for FIXED descendants too.  So `position: fixed` does not
+escape the wrapper's `overflow: hidden` the way it normally would, and there
+are about 55 canvas px of plate below the button before the artwork ends: one
+row.  The list is therefore rendered outside the card entirely, in its own
+shadow root, positioned from the button's own rect and moved with it on scroll
+and resize.
+
+### A stream name that ran under the Dolby lockup
+
+`Third-party channel-based PCM` is what the unit calls ordinary multichannel
+PCM from a source it does not otherwise recognise, and at thirty characters it
+ran the `Stream:` row under the decoder badge.  It now reads `Third-party
+PCM`, through the same short-forms table that already handles the two Dolby
+Digital Plus names.  "Channel-based" is the only kind of third-party PCM the
+unit reports, so the qualifier distinguishes it from nothing.
+
 ## v2.5.3 - 2026-08-21
 
 ### The recorder was warning about the settings tables, twice a boot
