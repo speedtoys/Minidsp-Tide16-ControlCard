@@ -7,13 +7,17 @@ re-asks on two schedules:
 
     slow sweep    every 60s, a safety net in case a push was missed across a
                   reconnect, plus get_settings, which nothing ever pushes
-    metering      every 5s idle, every 250ms while something is watching
+    metering      every 1s idle, every 100ms while something is watching
 
 Metering is the reason the split exists.  `get_rms_block_db` is the one thing
 with no push behind it, and the front-panel card draws it as a live bar meter,
 where 5s between samples reads as a broken meter rather than a slow one.  So
 the card subscribes over the websocket API while it is on screen and the fast
 cadence runs only while subscribers exist - see websocket.py.
+
+The idle cadence is not free either, even with nobody watching: it is the only
+thing feeding the audio-signal sensor, and how often it looks sets how late
+that sensor can be - see _apply_signal.
 
 The 16 levels deliberately never become entity state.  Four updates a second
 of a sixteen-float attribute is a database problem, and the previous design
@@ -27,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
@@ -50,6 +55,7 @@ from .api.const import (
     N_STREAM,
     N_VOLUME_DB,
     REFRESH_ENDPOINTS,
+    SIGNAL_DB,
     SILENCE_DB,
 )
 from .const import DOMAIN
@@ -57,7 +63,17 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 FULL_REFRESH = 60.0
-IDLE_METERING = 5.0
+# Nobody is watching the meter at this cadence, but the audio-signal sensor is
+# still fed from it, so this is that sensor's resolution: how soon it can say
+# audio started, and the grain the release below is counted in.  At the old 5s
+# every transition it reported landed on a five-second grid, which is what gave
+# the flapping away.  One request a second on a socket that answers 89 of them
+# a second is not a load worth optimising against.
+IDLE_METERING = 1.0
+# How long every output has to stay under SIGNAL_DB before the audio counts as
+# stopped.  Long enough to ride through a scene cut or a pause between lines,
+# short enough that an automation waiting on silence still feels prompt.
+SIGNAL_RELEASE = 4.0
 # Matched to the unit, measured rather than assumed: it answers
 # get_rms_block_db 89 times a second with a 5ms round trip, but the numbers it
 # returns only change about every 90ms - so that is how often it recomputes
@@ -93,6 +109,7 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         # drag every entity through a state write with them
         self.levels: list[float] = [SILENCE_DB] * CHANNEL_COUNT
         self._signal = False
+        self._signal_seen = 0.0
 
         # The two halves of the channel legend, kept apart because they arrive
         # in separate replies in no fixed order and either one has to be able
@@ -227,6 +244,7 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.data["channel_names_held"] = held
         self.data["versions"] = versions
         self._signal = False
+        self._signal_seen = 0.0
         self.levels = [SILENCE_DB] * CHANNEL_COUNT
         self.async_set_updated_data(self.data)
 
@@ -277,14 +295,42 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                     levels[index - 1] = float(value)
         self.levels = levels
 
-        # The only entity fed by metering, and only when it actually flips:
+        # The only entity fed by metering, and only when the envelope flips:
         # four state writes a second is exactly what this design exists to
         # avoid.
-        signal = max(levels) > SILENCE_DB
-        if signal != self._signal:
-            self._signal = signal
-            self.data["signal"] = signal
-            self.async_set_updated_data(self.data)
+        self._apply_signal(max(levels))
+
+    def _apply_signal(self, peak: float) -> None:
+        """Fast attack, slow release.
+
+        One sample is not evidence that the audio stopped.  `get_rms_block_db`
+        answers with a single ~90ms block, and program material puts every
+        output under the threshold for a block at a time with the audio
+        running - between words, across a scene cut, under a fade.
+
+        Testing one sample and believing it turned those gaps into state
+        changes.  Worse, it turned them into gaps the length of the poll: the
+        sample that landed in a 90ms pause reported silence until the next poll
+        five seconds later, so a listener hearing continuous audio watched the
+        sensor report several hundred transitions across an evening, none of
+        which happened.
+
+        So audio starting is believed at once, and audio stopping only after
+        SIGNAL_RELEASE seconds in which no sample cleared the threshold.
+        """
+        now = time.monotonic()
+        if peak > SIGNAL_DB:
+            self._signal_seen = now
+            if self._signal:
+                return
+            signal = True
+        elif not self._signal or now - self._signal_seen < SIGNAL_RELEASE:
+            return
+        else:
+            signal = False
+        self._signal = signal
+        self.data["signal"] = signal
+        self.async_set_updated_data(self.data)
 
     def _apply_status(self, value: Any) -> None:
         if isinstance(value, str):

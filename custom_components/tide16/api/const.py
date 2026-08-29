@@ -115,3 +115,9 @@ MAX_VOLUME_DB: Final = 0.0
 # sit at the floor.  Measured silence on this hardware is about -125 dB.
 CHANNEL_COUNT: Final = 16
 SILENCE_DB: Final = -70.0
+
+# The audio-signal detector's threshold, deliberately NOT SILENCE_DB.  The two
+# answer different questions: the meter's floor is how low a bar is allowed to
+# draw, and this is whether anything is playing.  Program material passes below
+# -70 for a block at a time with the audio running - see _apply_signal.
+SIGNAL_DB: Final = -60.0

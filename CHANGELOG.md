@@ -1,5 +1,42 @@
 # Changelog
 
+## v2.5.6 - 2026-08-29
+
+### The audio sensor followed the sample, not the sound
+
+`binary_sensor.tide16_audio_signal` flapped on and off through uninterrupted
+playback - reported from the forum with 14 transitions in four and a half
+minutes, and confirmed here at around four hundred a day sitting in the
+recorder.
+
+Every interval anyone measured was a multiple of five seconds, which is the
+whole story.  `get_rms_block_db` is the one endpoint with no push behind it,
+so the audio sensor is fed by the metering poll, and with nobody watching the
+panel that poll ran once every five seconds.  Each reading is a single ~90ms
+block, tested against the meter's floor and believed.  Program material drops
+every output under that floor for a block at a time constantly - between two
+words, across a scene cut, under a fade - and a poll that lands in one reported
+silence for the whole five seconds until the next poll.  Measured on a real
+stream: thirty-four such excursions in fifty-five seconds, the longest 1.52
+seconds, seventeen percent of samples below threshold.  With the panel card on
+screen the poll runs at 100ms and the same rule flapped ten times a second.
+
+The sensor now follows the envelope.  Audio starting is believed at once; audio
+stopping only after four seconds in which no sample cleared the threshold, so
+a gap has to be real silence rather than a pause for breath.  The threshold is
+its own constant now - `SIGNAL_DB`, -60 dB - because how low a meter bar may
+draw and whether anything is playing are two different questions that had been
+sharing one number.
+
+The idle poll moved from five seconds to one.  Nobody is watching the meter at
+that cadence, but the sensor is still fed from it, and how often it looks sets
+how late it can be: audio starting now shows within a second instead of five.
+That is one request a second on a socket the unit answers eighty-nine times a
+second.
+
+Nothing changed for the meter itself, the subscribed cadence, or any other
+entity.
+
 ## v2.5.5 - 2026-08-22
 
 ### The preset button was lit from the wrong direction

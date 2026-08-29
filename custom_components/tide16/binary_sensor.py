@@ -72,8 +72,10 @@ BINARY_SENSORS: tuple[Tide16BinaryDescription, ...] = (
     Tide16BinaryDescription(
         key="audio_signal",
         name="Audio Signal",
-        # The only entity fed by metering, and it only writes state when audio
-        # starts or stops - see the coordinator.
+        # The only entity fed by metering, and it follows the envelope rather
+        # than the sample: it lights the moment audio starts and clears only
+        # after several seconds with none - see _apply_signal in the
+        # coordinator.
         value=lambda d: bool(d.get("signal")),
     ),
     Tide16BinaryDescription(
