@@ -21,9 +21,18 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.components import network
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -32,13 +41,31 @@ from homeassistant.helpers.selector import (
 
 from .api import Tide16Client, Tide16Error, async_scan, candidate_hosts
 from .api.const import DEFAULT_PORT
-from .const import CONF_HOST, CONF_PORT, DEVICE_NAME, DOMAIN
+from .const import (
+    CONF_HOST,
+    CONF_PORT,
+    CONF_SILENCE_HOLD,
+    CONF_SILENCE_LEVEL,
+    DEFAULT_SILENCE_HOLD,
+    DEFAULT_SILENCE_LEVEL,
+    DEVICE_NAME,
+    DOMAIN,
+    MAX_SILENCE_HOLD,
+    MAX_SILENCE_LEVEL,
+    MIN_SILENCE_HOLD,
+    MIN_SILENCE_LEVEL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class Tide16ConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> Tide16OptionsFlow:
+        return Tide16OptionsFlow(config_entry)
 
     def __init__(self) -> None:
         self._found: list[dict[str, Any]] = []
@@ -172,4 +199,70 @@ class Tide16ConfigFlow(ConfigFlow, domain=DOMAIN):
             "No Tide16 found on this network. A Tide16 in standby leaves the "
             "network entirely, so switch it on and try again - or type its "
             "address below if it is on a different subnet."
+        )
+
+
+class Tide16OptionsFlow(OptionsFlow):
+    """Audio detection, for the systems the defaults do not fit.
+
+    Both defaults were measured on real material rather than chosen, and most
+    installs will never open this.  It exists because "silent" is a different
+    level on every system - an analog input, or a source that keeps a low-level
+    signal alive between tracks, sits far above digital silence - and the two
+    ways that goes wrong are both invisible from inside the integration.
+
+    The entry reloads on save, so a change applies without a restart.
+    """
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        # Deliberately not `self.config_entry`: assigning that is deprecated on
+        # newer cores and this has to run on 2024.7 as well.
+        self._entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(
+                data={
+                    CONF_SILENCE_LEVEL: float(user_input[CONF_SILENCE_LEVEL]),
+                    CONF_SILENCE_HOLD: float(user_input[CONF_SILENCE_HOLD]),
+                }
+            )
+
+        options = self._entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_SILENCE_LEVEL,
+                        default=float(
+                            options.get(CONF_SILENCE_LEVEL, DEFAULT_SILENCE_LEVEL)
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_SILENCE_LEVEL,
+                            max=MAX_SILENCE_LEVEL,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="dB",
+                        )
+                    ),
+                    vol.Required(
+                        CONF_SILENCE_HOLD,
+                        default=float(
+                            options.get(CONF_SILENCE_HOLD, DEFAULT_SILENCE_HOLD)
+                        ),
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=MIN_SILENCE_HOLD,
+                            max=MAX_SILENCE_HOLD,
+                            step=1,
+                            mode=NumberSelectorMode.BOX,
+                            unit_of_measurement="seconds",
+                        )
+                    ),
+                }
+            ),
         )

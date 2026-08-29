@@ -20,5 +20,21 @@
     "abort": {
       "already_configured": "This Tide16 is already set up."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Audio detection",
+        "description": "\"Silent\" is not the same level on every system. An analog input, or a source that keeps a low-level signal alive between tracks, can sit far above true digital silence. If Audio Signal never turns off, your floor is above this level — raise it. If it turns off during quiet scenes, lower it.",
+        "data": {
+          "silence_level": "Treat output below this level as silence",
+          "silence_hold": "Report silence after"
+        },
+        "data_description": {
+          "silence_level": "Lower values keep Audio Signal on through quieter material. Run the \"Measure output level\" action with nothing playing to see your own noise floor.",
+          "silence_hold": "How long the output must stay below that level before Audio Signal turns off. Pauses between words and scene cuts are shorter than this. Audio starting is always reported immediately."
+        }
+      }
+    }
   }
 }

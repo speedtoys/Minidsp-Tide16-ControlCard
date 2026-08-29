@@ -17,7 +17,13 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import (
+    HomeAssistant,
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+)
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
@@ -25,10 +31,16 @@ from homeassistant.loader import async_get_integration
 from .api.const import MAX_VOLUME_DB, MIN_VOLUME_DB, SET_VOLUME_DB
 from .const import (
     ATTR_DELTA,
+    ATTR_DURATION,
     CONF_HOST,
     CONF_PORT,
+    CONF_SILENCE_HOLD,
+    CONF_SILENCE_LEVEL,
+    DEFAULT_SILENCE_HOLD,
+    DEFAULT_SILENCE_LEVEL,
     DOMAIN,
     PANEL_JS,
+    SERVICE_MEASURE_LEVEL,
     SERVICE_VOLUME_STEP,
     STATIC_URL,
 )
@@ -58,6 +70,14 @@ VOLUME_STEP_SCHEMA = vol.Schema(
     }
 )
 
+MEASURE_LEVEL_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_DURATION, default=10): vol.All(
+            vol.Coerce(float), vol.Range(min=1, max=120)
+        ),
+    }
+)
+
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register the card once, whether or not a unit is configured yet."""
@@ -67,7 +87,13 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = Tide16Coordinator(
-        hass, entry.data[CONF_HOST], entry.data.get(CONF_PORT, 5555)
+        hass,
+        entry.data[CONF_HOST],
+        entry.data.get(CONF_PORT, 5555),
+        silence_level=float(
+            entry.options.get(CONF_SILENCE_LEVEL, DEFAULT_SILENCE_LEVEL)
+        ),
+        silence_hold=float(entry.options.get(CONF_SILENCE_HOLD, DEFAULT_SILENCE_HOLD)),
     )
     await coordinator.async_start()
 
@@ -93,6 +119,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.async_stop()
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_VOLUME_STEP)
+            hass.services.async_remove(DOMAIN, SERVICE_MEASURE_LEVEL)
     return unloaded
 
 
@@ -138,6 +165,27 @@ def _async_register_services(hass: HomeAssistant) -> None:
             target = max(MIN_VOLUME_DB, min(MAX_VOLUME_DB, float(current) + delta))
             await coordinator.async_send(SET_VOLUME_DB, value=round(target, 2))
 
+    async def _measure_output_level(call: ServiceCall) -> ServiceResponse:
+        """Report what the output is doing, so a threshold can be chosen.
+
+        It returns rather than stores.  This is something a user runs once
+        while deciding on a number, and an entity holding it would put the very
+        levels this design keeps out of the recorder straight back into it.
+        """
+        coordinators = list(hass.data.get(DOMAIN, {}).values())
+        if not coordinators:
+            raise HomeAssistantError("No Tide16 is configured.")
+        return await coordinators[0].async_measure_levels(
+            float(call.data[ATTR_DURATION])
+        )
+
     hass.services.async_register(
         DOMAIN, SERVICE_VOLUME_STEP, _volume_step, schema=VOLUME_STEP_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_MEASURE_LEVEL,
+        _measure_output_level,
+        schema=MEASURE_LEVEL_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
     )

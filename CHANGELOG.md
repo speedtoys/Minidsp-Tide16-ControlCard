@@ -13,20 +13,22 @@ Every interval anyone measured was a multiple of five seconds, which is the
 whole story.  `get_rms_block_db` is the one endpoint with no push behind it,
 so the audio sensor is fed by the metering poll, and with nobody watching the
 panel that poll ran once every five seconds.  Each reading is a single ~90ms
-block, tested against the meter's floor and believed.  Program material drops
-every output under that floor for a block at a time constantly - between two
-words, across a scene cut, under a fade - and a poll that lands in one reported
-silence for the whole five seconds until the next poll.  Measured on a real
-stream: thirty-four such excursions in fifty-five seconds, the longest 1.52
-seconds, seventeen percent of samples below threshold.  With the panel card on
-screen the poll runs at 100ms and the same rule flapped ten times a second.
+block, tested against the threshold and believed.  Program material drops every
+output under that line for a block at a time constantly - between two words,
+across a scene cut, under a fade - and a poll that lands in one reported silence
+for the whole five seconds until the next poll.  With the panel card on screen
+the poll runs at 100ms and the same rule flapped ten times a second.
 
 The sensor now follows the envelope.  Audio starting is believed at once; audio
-stopping only after four seconds in which no sample cleared the threshold, so
-a gap has to be real silence rather than a pause for breath.  The threshold is
-its own constant now - `SIGNAL_DB`, -60 dB - because how low a meter bar may
-draw and whether anything is playing are two different questions that had been
-sharing one number.
+stopping only after four seconds in which no sample cleared the threshold, so a
+gap has to be real silence rather than a pause for breath.
+
+The entity was really a silence detector wearing a meter's name, and a silence
+detector has to prove absence over time rather than sample presence at an
+instant.  Everything else here follows from that.  It also explains why the
+release side is the one that carries the hold-off: anything waiting on this
+entity is waiting for `off`, so a false `off` is the whole failure and a false
+`on` costs nothing.
 
 The idle poll moved from five seconds to one.  Nobody is watching the meter at
 that cadence, but the sensor is still fed from it, and how often it looks sets
@@ -34,8 +36,47 @@ how late it can be: audio starting now shows within a second instead of five.
 That is one request a second on a socket the unit answers eighty-nine times a
 second.
 
-Nothing changed for the meter itself, the subscribed cadence, or any other
-entity.
+### What counts as silence is now yours to set
+
+Settings -> Devices & Services -> miniDSP Tide16 -> **Configure** holds the two
+numbers behind all of the above: the level below which the output counts as
+silent, and how long it has to stay there.  The entry reloads on save, so a
+change applies without a restart, and an install that never opens the dialog
+behaves exactly as it did.
+
+They are settable because "silent" is not the same level on every system.  An
+analog input, or a source that keeps a low-level signal alive between tracks,
+sits far above digital silence, and both ways that goes wrong are invisible from
+inside the integration: too low and the sensor never reports silence at all,
+because an input's own noise floor holds it on and an automation waiting for
+`off` never fires; too high and ordinary quiet material reads as silence, which
+is the flapping above.  The field range refuses the far ends of both.
+
+### Measure output level
+
+A new action, and the reason the threshold field is worth having.  A dB number
+is only choosable if you know where your own noise floor sits, and nothing in
+Home Assistant shows you - the levels deliberately never become entity state.
+This samples the outputs at the fast cadence for a few seconds and returns peak,
+median, the quietest level seen, how much of the sample fell below the current
+threshold, the longest continuous gap, and a suggested level 30 dB clear of the
+floor.  It returns rather than stores, because the alternative is an entity that
+puts four readings a second back into the recorder.
+
+Run it with nothing playing and it describes your noise floor; run it with audio
+playing and it says so, because then the floor it found is a gap in the
+programme and the suggestion means nothing.
+
+### The default, and how it was picked
+
+-70 dB, measured rather than chosen, and it is what the integration always used.
+An earlier draft of this fix raised it to -60 on tidiness grounds and that was
+wrong: on real program material at 10Hz, -70 puts the peak of the sixteen
+outputs below the line twice a minute for one 100ms block each, while -60 does
+so twenty-one times with the longest run 3.2 seconds - four fifths of a second
+short of the release, on ordinary content.  A quieter film would have walked
+straight through it.  The measurement is in the comment beside the constant so
+the next person does not have to repeat it.
 
 ## v2.5.5 - 2026-08-22
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Final
 
+from .api.const import SIGNAL_DB
+
 DOMAIN: Final = "tide16"
 
 CONF_HOST: Final = "host"
@@ -23,6 +25,31 @@ DEVICE_NAME: Final = "Tide16"
 
 SERVICE_VOLUME_STEP: Final = "volume_step"
 ATTR_DELTA: Final = "delta"
+
+SERVICE_MEASURE_LEVEL: Final = "measure_output_level"
+ATTR_DURATION: Final = "duration"
+
+# --- audio detection -------------------------------------------------------
+# What counts as silence is not the same level on every system, which is why
+# these are settable at all: an analog input, or a source that keeps a
+# low-level signal alive between tracks, sits far above digital silence.  The
+# defaults are measured rather than chosen - see api/const.SIGNAL_DB and
+# coordinator._apply_signal.
+CONF_SILENCE_LEVEL: Final = "silence_level"
+CONF_SILENCE_HOLD: Final = "silence_hold"
+
+DEFAULT_SILENCE_LEVEL: Final = SIGNAL_DB
+DEFAULT_SILENCE_HOLD: Final = 4.0
+
+# Guard rails, and they are not decoration.  Under the lower bound an input's
+# own noise floor can hold the sensor on for ever, so it never reports silence
+# and an automation waiting for it never fires - the worse of the two failures.
+# Over the upper bound ordinary quiet material reads as silence, which is the
+# flapping this whole design exists to stop.
+MIN_SILENCE_LEVEL: Final = -110.0
+MAX_SILENCE_LEVEL: Final = -45.0
+MIN_SILENCE_HOLD: Final = 1.0
+MAX_SILENCE_HOLD: Final = 60.0
 
 DOLBY_PROFILES: Final = ("off", "movie", "music", "night")
 

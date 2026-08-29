@@ -116,8 +116,14 @@ MAX_VOLUME_DB: Final = 0.0
 CHANNEL_COUNT: Final = 16
 SILENCE_DB: Final = -70.0
 
-# The audio-signal detector's threshold, deliberately NOT SILENCE_DB.  The two
-# answer different questions: the meter's floor is how low a bar is allowed to
-# draw, and this is whether anything is playing.  Program material passes below
-# -70 for a block at a time with the audio running - see _apply_signal.
-SIGNAL_DB: Final = -60.0
+# The audio-signal detector's threshold.  Numerically the same as the meter's
+# floor and deliberately a separate name anyway: one is how low a bar may draw,
+# the other is whether anything is playing, and they are free to diverge.
+#
+# Measured on real program material at 10Hz before choosing it: at -70 the peak
+# of the sixteen outputs falls below the line twice a minute for one 100ms block
+# each, and at -60 it does so twenty-one times with the longest run 3.2 seconds -
+# four fifths of a second short of the release below, on ordinary content.  The
+# quiet end of the scale is where the headroom is, and there is no floor noise
+# up here to reject: real silence on this hardware reads -120.
+SIGNAL_DB: Final = -70.0

@@ -31,10 +31,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import statistics
 import time
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -55,10 +57,15 @@ from .api.const import (
     N_STREAM,
     N_VOLUME_DB,
     REFRESH_ENDPOINTS,
-    SIGNAL_DB,
     SILENCE_DB,
 )
-from .const import DOMAIN
+from .const import (
+    DEFAULT_SILENCE_HOLD,
+    DEFAULT_SILENCE_LEVEL,
+    DOMAIN,
+    MAX_SILENCE_LEVEL,
+    MIN_SILENCE_LEVEL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,10 +77,6 @@ FULL_REFRESH = 60.0
 # the flapping away.  One request a second on a socket that answers 89 of them
 # a second is not a load worth optimising against.
 IDLE_METERING = 1.0
-# How long every output has to stay under SIGNAL_DB before the audio counts as
-# stopped.  Long enough to ride through a scene cut or a pause between lines,
-# short enough that an automation waiting on silence still feels prompt.
-SIGNAL_RELEASE = 4.0
 # Matched to the unit, measured rather than assumed: it answers
 # get_rms_block_db 89 times a second with a 5ms round trip, but the numbers it
 # returns only change about every 90ms - so that is how often it recomputes
@@ -99,11 +102,25 @@ DISCONNECTED_STATUS = "not connected"
 class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Owns the connection and everything read off it."""
 
-    def __init__(self, hass: HomeAssistant, host: str, port: int) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        host: str,
+        port: int,
+        *,
+        silence_level: float = DEFAULT_SILENCE_LEVEL,
+        silence_hold: float = DEFAULT_SILENCE_HOLD,
+    ) -> None:
         super().__init__(hass, _LOGGER, name=f"{DOMAIN} {host}", update_interval=None)
         self.host = host
         self.port = port
         self.data = _blank()
+
+        # Both settable per install - see the options flow.  They arrive here
+        # rather than being read from the entry, because the coordinator has no
+        # business knowing what a config entry is.
+        self.silence_level = silence_level
+        self.silence_hold = silence_hold
 
         # levels live outside `data` on purpose: they move at 4 Hz and must not
         # drag every entity through a state write with them
@@ -316,21 +333,84 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         which happened.
 
         So audio starting is believed at once, and audio stopping only after
-        SIGNAL_RELEASE seconds in which no sample cleared the threshold.
+        `silence_hold` seconds in which no sample cleared `silence_level`.
         """
         now = time.monotonic()
-        if peak > SIGNAL_DB:
+        if peak > self.silence_level:
             self._signal_seen = now
             if self._signal:
                 return
             signal = True
-        elif not self._signal or now - self._signal_seen < SIGNAL_RELEASE:
+        elif not self._signal or now - self._signal_seen < self.silence_hold:
             return
         else:
             signal = False
         self._signal = signal
         self.data["signal"] = signal
         self.async_set_updated_data(self.data)
+
+    async def async_measure_levels(self, duration: float) -> dict[str, Any]:
+        """Watch the output for a while and describe what it found.
+
+        This is what makes the silence level settable with evidence rather than
+        taste.  The number a user needs is somewhere in the gap between their
+        own noise floor and the quietest thing their material actually does,
+        and Home Assistant shows them neither - so a threshold field on its own
+        is a slider nobody can reason about.
+
+        It subscribes to metering exactly as the card does, so the sampling
+        runs at the fast cadence and drops back to idle when it is finished.
+        """
+        if not self._client.connected:
+            raise HomeAssistantError(
+                "The Tide16 is not connected, so there is nothing to measure."
+            )
+
+        self.add_meter_subscriber()
+        peaks: list[float] = []
+        try:
+            end = time.monotonic() + duration
+            while time.monotonic() < end:
+                peaks.append(max(self.levels))
+                await asyncio.sleep(FAST_METERING)
+        finally:
+            self.remove_meter_subscriber()
+
+        if not peaks:
+            raise HomeAssistantError("No levels arrived from the Tide16.")
+
+        floor = min(peaks)
+        below = [p for p in peaks if p <= self.silence_level]
+        longest = run = 0
+        for p in peaks:
+            run = run + 1 if p <= self.silence_level else 0
+            longest = max(longest, run)
+
+        # 30 dB over the quietest thing seen.  Run with nothing playing, that
+        # floor is the system's own noise and this clears it comfortably; run
+        # it with audio playing and the note below says so, because then the
+        # floor is a gap in the programme and the suggestion means nothing.
+        suggested = min(
+            MAX_SILENCE_LEVEL, max(MIN_SILENCE_LEVEL, round(floor + 30.0))
+        )
+
+        result: dict[str, Any] = {
+            "peak": round(max(peaks), 1),
+            "median": round(statistics.median(peaks), 1),
+            "floor": round(floor, 1),
+            "below_threshold_percent": round(len(below) / len(peaks) * 100, 1),
+            "longest_gap": round(longest * FAST_METERING, 2),
+            "silence_level": self.silence_level,
+            "silence_hold": self.silence_hold,
+            "suggested_silence_level": float(suggested),
+            "samples": len(peaks),
+        }
+        if statistics.median(peaks) > -90.0:
+            result["note"] = (
+                "Audio appears to have been playing. Run this again with "
+                "nothing playing to measure your system's noise floor."
+            )
+        return result
 
     def _apply_status(self, value: Any) -> None:
         if isinstance(value, str):
