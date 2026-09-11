@@ -38,3 +38,23 @@ measure_output_level:
           step: 1
           unit_of_measurement: seconds
           mode: box
+
+set_preset:
+  name: Set preset
+  description: >-
+    Recall a filter preset by its id - the number the unit knows it by,
+    regardless of what the preset has been named. Naming a preset in Device
+    Console rewrites the options on the Filter Preset select, which makes
+    select.select_option reject the number an automation stored; this takes
+    the id and is unaffected by a rename.
+  fields:
+    preset:
+      name: Preset
+      description: >-
+        The preset id, as shown by the Preset ID sensor. Ids are the unit's
+        own and are not always contiguous - a system can answer 1 and 3 to 12
+        with no 2.
+      required: true
+      example: 2
+      selector:
+        text:

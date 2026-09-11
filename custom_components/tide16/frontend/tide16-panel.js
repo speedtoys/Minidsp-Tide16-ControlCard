@@ -32,6 +32,28 @@
  *    because neither one alone catches both cases.
  */
 
+/**
+ * The card's version, taken from the URL it was loaded with rather than
+ * typed in here.
+ *
+ * `__init__.py` registers this module as `tide16-panel.js?v=<manifest
+ * version>`, because the query is what busts the browser cache on an
+ * upgrade.  That means the number is already on the URL of the running
+ * module, and reading it back is the only spelling that cannot drift: a
+ * literal in this file is a second place to remember, and it was wrong -
+ * the card printed v2.5.5 under a 2.5.6 install.
+ *
+ * The fallback is for a module loaded without the query, which is a
+ * development copy rather than a release, and says so.
+ */
+const TIDE16_VERSION = (() => {
+  try {
+    return new URL(import.meta.url).searchParams.get('v') || 'dev';
+  } catch (err) {
+    return 'dev';
+  }
+})();
+
 const GEOMETRY = {
   // Canvas-space measurements taken off plate.png and cross-checked
   // against the baked channel labels (agreed to within 2px). Percentages
@@ -4433,7 +4455,7 @@ const PANEL_LAYOUT = {
       },
       {
         "type": "custom:tide16-readout",
-        "title": "v2.5.5",
+        "title": `v${TIDE16_VERSION}`,
         "title_size": "0.980cqw",
         "title_color": "#000",
         "title_gap": "0",
@@ -5085,8 +5107,6 @@ function withSpectrum(layout, spec) {
   });
   return layout;
 }
-
-const TIDE16_VERSION = '2.5.5';
 
 console.info(
   `%c TIDE16 ${TIDE16_VERSION} %c panel card + meter + legend + readouts + inputs + scenes + knob labels + glyphs `,

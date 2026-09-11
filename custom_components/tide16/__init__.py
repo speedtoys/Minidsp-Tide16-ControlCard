@@ -28,10 +28,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
 
-from .api.const import MAX_VOLUME_DB, MIN_VOLUME_DB, SET_VOLUME_DB
+from .api.const import MAX_VOLUME_DB, MIN_VOLUME_DB, SET_PRESET, SET_VOLUME_DB
 from .const import (
     ATTR_DELTA,
     ATTR_DURATION,
+    ATTR_PRESET,
     CONF_HOST,
     CONF_PORT,
     CONF_SILENCE_HOLD,
@@ -41,6 +42,7 @@ from .const import (
     DOMAIN,
     PANEL_JS,
     SERVICE_MEASURE_LEVEL,
+    SERVICE_SET_PRESET,
     SERVICE_VOLUME_STEP,
     STATIC_URL,
 )
@@ -75,6 +77,38 @@ MEASURE_LEVEL_SCHEMA = vol.Schema(
         vol.Optional(ATTR_DURATION, default=10): vol.All(
             vol.Coerce(float), vol.Range(min=1, max=120)
         ),
+    }
+)
+
+
+def preset_id(value: object) -> str:
+    """The id the unit wants, from whatever a caller passed.
+
+    `set_preset` takes the id as a string, and a dashboard, a script and the
+    UI's own number field each hand it over differently - 2, 2.0, "2".  All
+    three mean the same slot, so they are folded to one spelling here rather
+    than left to fail as a mismatch nobody can see.  An id that is not a
+    number at all is passed through untouched: the ids are the unit's, not
+    ours, and it is not this function's business to have opinions about them.
+    """
+    text = str(value).strip()
+    try:
+        return str(int(float(text)))
+    except ValueError:
+        return text
+
+
+def preset_sort(pid: str) -> tuple[int, float, str]:
+    """Order ids the way a person reads them: 2 before 10, names last."""
+    try:
+        return (0, float(pid), "")
+    except ValueError:
+        return (1, 0.0, pid)
+
+
+SET_PRESET_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_PRESET): vol.All(preset_id, vol.Length(min=1)),
     }
 )
 
@@ -120,6 +154,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, SERVICE_VOLUME_STEP)
             hass.services.async_remove(DOMAIN, SERVICE_MEASURE_LEVEL)
+            hass.services.async_remove(DOMAIN, SERVICE_SET_PRESET)
     return unloaded
 
 
@@ -179,8 +214,50 @@ def _async_register_services(hass: HomeAssistant) -> None:
             float(call.data[ATTR_DURATION])
         )
 
+    async def _set_preset(call: ServiceCall) -> None:
+        """Recall a preset by id, whatever the slot happens to be named.
+
+        The select entity carries the name in its option strings, because a
+        dropdown that says "2" and nothing else is no use to a person.  That
+        is exactly what makes it unusable from an automation: naming a preset
+        on the unit rewrites every option, and `select.select_option` then
+        rejects the number that used to work.  This reads the id and only the
+        id, so a rename cannot reach it.
+
+        An id no unit holds raises rather than passing quietly to a device
+        that would ignore it - a silent no-op is the failure being reported.
+        """
+        wanted = preset_id(call.data[ATTR_PRESET])
+        coordinators = list(hass.data.get(DOMAIN, {}).values())
+        if not coordinators:
+            raise HomeAssistantError("No Tide16 is configured.")
+
+        known: set[str] = set()
+        sent = False
+        for coordinator in coordinators:
+            slots = {
+                str(slot.get("id"))
+                for slot in coordinator.data.get("presets") or []
+                if isinstance(slot, dict) and slot.get("id") is not None
+            }
+            known |= slots
+            if wanted in slots:
+                await coordinator.async_send(SET_PRESET, id=wanted)
+                sent = True
+
+        if not sent:
+            # Ids are not contiguous - units answer 1, 3..12 - so listing the
+            # ones that exist is more use than saying how many there are.
+            offered = ", ".join(sorted(known, key=preset_sort)) or "none"
+            raise HomeAssistantError(
+                f"No Tide16 has preset {wanted}. Presets on this system: {offered}."
+            )
+
     hass.services.async_register(
         DOMAIN, SERVICE_VOLUME_STEP, _volume_step, schema=VOLUME_STEP_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_SET_PRESET, _set_preset, schema=SET_PRESET_SCHEMA
     )
     hass.services.async_register(
         DOMAIN,

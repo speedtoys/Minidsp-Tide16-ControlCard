@@ -193,6 +193,16 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
         },
     ),
     Tide16SensorDescription(
+        key="preset_id",
+        name="Preset ID",
+        # The bare id, which is the one thing about a preset that a rename
+        # cannot move.  The Preset sensor above states the NAME and the
+        # Filter Preset select states "2: Movie", both of which are for
+        # people to read; an automation comparing against a stored number
+        # needs a state that is only ever the number, and this is it.
+        value=lambda d: d.get("preset_index"),
+    ),
+    Tide16SensorDescription(
         key="volume_integer",
         name="Volume Integer",
         value=lambda d: (_volume_parts(d) or (None, None))[0],

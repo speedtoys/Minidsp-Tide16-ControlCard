@@ -29,6 +29,14 @@ ATTR_DELTA: Final = "delta"
 SERVICE_MEASURE_LEVEL: Final = "measure_output_level"
 ATTR_DURATION: Final = "duration"
 
+# Recall a preset by its id.  `select.select_option` is core Home Assistant
+# and can only take a string that is already in the option list, so naming a
+# preset on the unit - which turns the option "2" into "2: Movie" - breaks
+# every automation that stored the number.  This takes the id and nothing
+# else, so a rename cannot reach it.
+SERVICE_SET_PRESET: Final = "set_preset"
+ATTR_PRESET: Final = "preset"
+
 # --- audio detection -------------------------------------------------------
 # What counts as silence is not the same level on every system, which is why
 # these are settable at all: an analog input, or a source that keeps a

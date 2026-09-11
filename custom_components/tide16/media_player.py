@@ -93,6 +93,12 @@ class Tide16MediaPlayer(Tide16Entity, MediaPlayerEntity):
             "volume_db": data.get("volume_db"),
             "status": data.get("status"),
             "source_id": data.get("source_id"),
+            # The preset id sits beside the source id for the same reason:
+            # the number the unit knows it by, next to the name a person
+            # reads.  Naming a preset rewrites the Filter Preset select's
+            # options and breaks an automation that stored the number; this
+            # attribute is the half a rename cannot reach.
+            "preset_id": data.get("preset_index"),
             # {id: {name, hidden, volume_offset}} straight off the device
             "sources": data.get("sources") or {},
         }

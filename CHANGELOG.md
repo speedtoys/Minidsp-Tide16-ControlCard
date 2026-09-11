@@ -1,5 +1,71 @@
 # Changelog
 
+## v2.5.7 - 2026-09-10
+
+### Naming a preset broke every automation that used it
+
+Reported from the forum.  `select.tide16_filter_preset` lists its options as
+the unit describes them, and an unnamed slot describes itself as nothing but
+its id - so the options read "1" and "2", and automations were written against
+those.  Name a preset in Device Console and the same option becomes
+"2: Movie".  The stored number now matches nothing: a state comparison stops
+being true, and `select.select_option` refuses the value outright, because the
+option list is the only vocabulary a core select accepts.  Both fail silently,
+and renaming the preset later breaks it again.
+
+The label is for people and the id is for machines, and putting them in one
+string meant renaming moved both.  Two additions separate them again.
+
+### sensor.tide16_preset_id
+
+The id on its own - `1`, `2` - and nothing else.  No name, no colon, no
+prefix.  It is what `sensor.tide16_dirac_slot` already does for Dirac, which
+is where the shape came from: the forum request asked for consistency with it
+by name.
+
+`media_player.tide16` gains the same value as a `preset_id` attribute, beside
+the `source_id` that has always sat next to the source name.  The input had
+this pairing already; the preset did not.
+
+The existing entities are unchanged.  `sensor.tide16_preset` still states the
+preset's name and the select still lists "2: Movie", because that is what a
+person reading a dashboard wants.  Nothing that worked before stops working.
+
+### The card printed the wrong version
+
+The version in the plate's bottom-right corner was a literal typed into
+`tide16-panel.js`, and it had drifted: the card said v2.5.5 under a 2.5.6
+install.  It now reads the number off the URL it was loaded with.
+
+`__init__.py` already registers the module as `tide16-panel.js?v=<manifest
+version>` - that query is what busts the browser cache on an upgrade - so the
+version was on the running module's own URL the whole time.  Reading it back
+is the only spelling that cannot drift, and it removes the second place
+anybody had to remember.  The console banner reads from the same value.
+
+### tide16.set_preset
+
+Recalls a preset by id, and is unaffected by a rename:
+
+    action: tide16.set_preset
+    data:
+      preset: 2
+
+It has to come from the integration.  `select.select_option` is core Home
+Assistant and can only be handed a string already in the option list, so no
+amount of care on the calling side survives the options being rewritten.
+
+An id the unit does not hold raises rather than returning quietly - "No Tide16
+has preset 5. Presets on this system: 1, 2." - because the complaint behind
+all of this is a failure nobody could see, and a new action that no-ops on a
+typo would be another one.  The ids are listed in that message rather than
+counted, because they are not contiguous: miniDSP's own notes have units
+answering 1 and 3 through 12, with no 2.
+
+`2`, `2.0` and `"2"` are folded to one spelling before anything is sent.  A
+number field in the UI, a template and a hand-written script each hand the
+same id over differently, and a mismatch there is invisible.
+
 ## v2.5.6 - 2026-08-29
 
 ### The audio sensor followed the sample, not the sound
