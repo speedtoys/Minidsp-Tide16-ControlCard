@@ -38,6 +38,9 @@ GET_OUTPUT_SPEAKERS: Final = "get_output_speakers"
 GET_CUSTOM_PORT_NAMES: Final = "get_custom_out_port_names"
 GET_DIRAC_STATE: Final = "get_dirac_state"
 GET_DIRAC_MEASURING: Final = "get_dirac_measuring_mode"
+# The loaded filter's own record - its name and, the reason it is read at all,
+# its type: plain Dirac Live, Bass Control, or ART.  Nothing pushes it.
+GET_DIRAC_FILTER: Final = "get_dirac_filter"
 GET_BLUETOOTH: Final = "get_bluetooth_status"
 GET_RMS_DB: Final = "get_rms_block_db"
 GET_SETTINGS: Final = "get_settings"
@@ -61,6 +64,7 @@ REFRESH_ENDPOINTS: Final = (
     GET_CUSTOM_PORT_NAMES,
     GET_DIRAC_STATE,
     GET_DIRAC_MEASURING,
+    GET_DIRAC_FILTER,
     GET_BLUETOOTH,
     GET_SETTINGS,
 )

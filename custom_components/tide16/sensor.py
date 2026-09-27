@@ -231,6 +231,18 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
         always_available=True,
     ),
     Tide16SensorDescription(
+        # "Dirac Live", "Dirac Live Bass Control" or "Dirac Active Room
+        # Treatment" - the only way to tell an ART filter from a plain one,
+        # which is what a front-panel ART badge needs to light from.
+        key="dirac_filter_type",
+        name="Dirac Filter Type",
+        value=lambda d: (d.get("dirac_filter") or {}).get("type"),
+        attributes=lambda d: {
+            "filter_name": (d.get("dirac_filter") or {}).get("name"),
+            "filter_index": (d.get("dirac_filter") or {}).get("index"),
+        },
+    ),
+    Tide16SensorDescription(
         key="versions",
         name="Versions",
         entity_category=EntityCategory.DIAGNOSTIC,

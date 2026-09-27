@@ -25,7 +25,7 @@ async def async_setup_entry(
     async_add_entities(
         [Tide16Mute(coordinator), Tide16Dirac(coordinator)]
         + [Tide16SettingSwitch(coordinator, s) for s in of_kind(SWITCH)]
-        + [Tide16AutoDimSwitch(coordinator)]
+        + [Tide16AutoDimSwitch(coordinator), Tide16QuotesSwitch(coordinator)]
     )
 
 
@@ -138,4 +138,53 @@ class Tide16AutoDimSwitch(Tide16Entity, SwitchEntity, RestoreEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.autodim.async_set(enabled=False)
+        self.async_write_ha_state()
+
+
+class Tide16QuotesSwitch(Tide16Entity, SwitchEntity, RestoreEntity):
+    """The idle panel's audiophile quotes, on or off.
+
+    Nothing here reaches the unit. With the Tide16 in standby the meter window
+    is dead space, and the card scrolls a line of audiophile nonsense across
+    it rather than leaving a black hole in the middle of the plate. It is a
+    joke, and a joke is exactly the kind of thing somebody wants turned off -
+    so it is a switch rather than a card option, reachable from the plate
+    itself and from a script, without anybody editing YAML.
+
+    Restored across a restart for the same reason Auto Dim is: a preference
+    that forgets itself every update is worse than one never offered.
+    """
+
+    _attr_icon = "mdi:comment-quote-outline"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: Tide16Coordinator) -> None:
+        super().__init__(coordinator, "idle_quotes", "Audiophile Quotes")
+        # On is how the panel has always behaved, so that is the default for
+        # anyone who never touches this.
+        self._on = True
+
+    @property
+    def available(self) -> bool:
+        # The quotes are only ever on screen while the unit is AWAY, so a
+        # switch that followed the unit's availability would be unavailable
+        # at precisely the moment somebody reaches for it.
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last = await self.async_get_last_state()
+        if last is not None and last.state in ("on", "off"):
+            self._on = last.state == "on"
+
+    @property
+    def is_on(self) -> bool:
+        return self._on
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        self._on = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        self._on = False
         self.async_write_ha_state()

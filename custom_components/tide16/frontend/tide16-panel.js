@@ -442,10 +442,53 @@ const DEFAULTS = {
   numbers_color: '#FFFFFF',
   numbers_weight: '500',
 
+  // Each output's own name, printed DOWN its column rather than across the
+  // card. The plate carries tide16-channels under it for this, but a bare
+  // meter box has nothing under it at all - and at a sixteenth of the width
+  // there is no room to write "SBL" across a column, while turned on its
+  // side there is. Off by default: it costs height below the baseline,
+  // which the plate has not got to give.
+  //
+  // The legend's own abbreviation - FL, SBR, TFL. The device's whole word
+  // ("RightRearOverhead") is not an option: a column is one bar wide and
+  // the abbreviations are the standard ones.
+  //
+  // Only outputs the DECODER assigned are named. A name typed into the
+  // unit's own web UI is somebody's own words for their own wiring - it is
+  // whatever length they felt like, and it says nothing about the surround
+  // layout the meter is there to show - so those columns are left blank
+  // here. The legend under the plate is where they belong, and it still
+  // prints them as they were typed.
+  names: false,
+  // The integration's own name sensor: its state is the count, its
+  // `channel_names` attribute is the list, held across a dropout so the
+  // meter stays labelled while the unit is away.
+  names_entity: 'sensor.tide16_channel_names_held',
+  names_attribute: 'channel_names',
+  // 1-based output numbers whose name is the user's own words.
+  names_custom_attribute: 'custom_channels',
+  names_size: '0.62cqw',
+  names_gap: '0.3cqw', // between the numbers and the top of the names
+  names_height: '6cqw', // how far a name may run down the column before it clips
+  names_color: '#B7B8B8',
+  names_weight: '400',
+  // What an output the device never assigned gets. Nothing, by default: the
+  // bar is parked at the idle floor and the number under it already says
+  // which output it is.
+  names_unassigned: '',
+
   // Idle panel. With the unit off there are no levels to draw and the
   // meter window is dead space, so it gets used. Off by setting
   // idle: false.
   idle: true,
+  // The same choice, made at run time instead of in the YAML. It is an
+  // easter egg, and an easter egg needs a way out that does not involve
+  // editing a card - so point this at an entity and the strings follow it.
+  // Only an explicit `idle_off_states` state turns them off: a missing
+  // entity, or one that has not restored yet, leaves the panel as it has
+  // always behaved rather than silently blanking the window.
+  idle_entity: null,
+  idle_off_states: ['off'],
   idle_delay_ms: 8000, // continuous silence before it starts
   idle_gap_ms: 5000, // dark pause between one string ending and the next starting
   idle_speed: 95.9, // px per second in the element's OWN space (see _idleNext)
@@ -494,6 +537,8 @@ class Tide16Bars extends HTMLElement {
     // the earliest moment a subscription can be opened
     if (first) this._syncSubscription();
     this._syncVisible();
+    // The names live on an entity, so they arrive after the row was built.
+    if (this._cfg.names) this._syncNames();
     // Labels can come off the same entity as the values, and that entity is
     // not there yet on the first pass, so the row is filled in once it is.
     if (this._cfg.label_attribute && !this._labelled) {
@@ -726,7 +771,12 @@ class Tide16Bars extends HTMLElement {
 
     if (this._cfg.idle) this._buildIdle();
 
-    if (!this._cfg.numbers) return;
+    // Rebuilt with the row, and filled by _syncNames once hass has the
+    // device's assignment - which it has not got at build time.
+    this._nameEls = [];
+    this._nameSig = null;
+
+    if (!this._cfg.numbers && !this._cfg.names) return;
     // Positioned at top:100% so it hangs BELOW the box rather than eating
     // bar travel - the box stays exactly the meter window, as the YAML
     // measured it. Each cell is one bar-pitch wide and centres its digit,
@@ -757,14 +807,100 @@ class Tide16Bars extends HTMLElement {
         width: `${geom.pitch}%`,
         flex: 'none',
         textAlign: 'center',
+        // A column of its own, so the name hangs under the number on the
+        // same pitch instead of the two fighting for the one line.
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
       });
-      // Thinned rather than dropped: every cell still holds its pitch, so
-      // the ones that do print stay centred under their own column.
-      cell.textContent = i % every === 0 ? labels[i] : '';
+      if (this._cfg.numbers) {
+        const num = document.createElement('div');
+        // Thinned rather than dropped: every cell still holds its pitch, so
+        // the ones that do print stay centred under their own column.
+        num.textContent = i % every === 0 ? labels[i] : '';
+        cell.appendChild(num);
+      }
+      if (this._cfg.names) cell.appendChild(this._nameCell());
       row.appendChild(cell);
     }
     this.appendChild(row);
     this._chrome.push(row);
+    if (this._cfg.names) this._syncNames();
+  }
+
+  /** One column's vertical name.
+   *
+   * `vertical-rl` rather than a rotate on a horizontal line: the box is then
+   * genuinely tall and narrow, so it takes its place in the column's flow,
+   * clips at the far end from the bar, and needs no reserved width.
+   */
+  _nameCell() {
+    const c = this._cfg;
+    const el = document.createElement('div');
+    Object.assign(el.style, {
+      writingMode: 'vertical-rl',
+      // The glyphs, not the box: turned over so the name reads bottom to
+      // top, out of the baseline, the way a chart's axis labels do.
+      transform: 'rotate(180deg)',
+      // In a vertical writing mode text-align runs DOWN the column, and the
+      // cell centres its number - inherited, that floats every name in the
+      // middle of its box and leaves the short ones hanging in space. The
+      // rotation turns the box over, so the end of it is the edge against
+      // the baseline: anchor there and sixteen names of different lengths
+      // all start on the same line.
+      textAlign: 'end',
+      marginTop: c.names_gap,
+      height: c.names_height,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      lineHeight: '1',
+      fontSize: c.names_size,
+      fontWeight: c.names_weight,
+      color: c.names_color,
+    });
+    this._nameEls.push(el);
+    return el;
+  }
+
+  /** Fill the names in, and only when they have actually changed.
+   *
+   * On screen the meter holds a subscription at 4 Hz, so this is handed a
+   * hass object four times a second; the channel assignment changes about
+   * once a year. Same repaint gate, and the same source, as the legend.
+   */
+  _syncNames() {
+    if (!this._nameEls || !this._nameEls.length) return;
+    const c = this._cfg;
+    const st = this._hass && c.names_entity ? this._hass.states[c.names_entity] : null;
+    const attrs = st && st.attributes ? st.attributes : null;
+    const list = attrs && Array.isArray(attrs[c.names_attribute])
+      ? attrs[c.names_attribute]
+      : [];
+    // 1-based output numbers, not names: the outputs whose name is the
+    // user's own words.
+    const typed = attrs && Array.isArray(attrs[c.names_custom_attribute])
+      ? attrs[c.names_custom_attribute].map(Number)
+      : [];
+    const sig = JSON.stringify([list, typed]);
+    if (sig === this._nameSig) return;
+    this._nameSig = sig;
+    this._nameEls.forEach((el, i) => {
+      const raw = list[i] != null ? String(list[i]) : '';
+      if (!raw) {
+        // Shorter than the column count - the list stops at the last output
+        // the decoder assigned.
+        el.textContent = c.names_unassigned;
+        return;
+      }
+      // Named by hand in the unit's web UI, not by the decoder: not ours to
+      // print. See `names` - the legend keeps those.
+      if (typed.indexOf(i + 1) !== -1) {
+        el.textContent = c.names_unassigned;
+        return;
+      }
+      el.textContent = abbreviate(raw);
+    });
   }
 
   /* -- idle panel ---------------------------------------------------- */
@@ -827,10 +963,28 @@ class Tide16Bars extends HTMLElement {
     return this._levels() === null;
   }
 
+  /** Whether the idle strings are wanted at all - see `idle_entity`.
+   *
+   * A preference, not a gate: anything other than a stated off-state counts
+   * as on, including the entity being absent. The panel predates the switch,
+   * and an install that has not got one should look exactly as it did.
+   */
+  _idleEnabled() {
+    const watch = this._cfg.idle_entity;
+    if (!watch) return true;
+    const st = this._hass ? this._hass.states[watch] : null;
+    if (!st) return true;
+    return (this._cfg.idle_off_states || []).indexOf(String(st.state)) === -1;
+  }
+
   /* Called on every hass update. `quiet` means the device is gone, not
      merely silent - a muted but live unit still reports levels. */
   _syncIdle(quiet) {
     if (!this._idleWrap) return;
+    // Folded into `quiet` rather than returning early, so switching the
+    // strings off takes one that is already scrolling OFF the screen: the
+    // branch below is what stops a running panel, and it has to be reached.
+    if (!this._idleEnabled()) quiet = false;
     const running = this._idleTimer !== null || this._idleAnim !== null;
     if (quiet && this._onScreen && document.visibilityState === 'visible') {
       if (!running) {
@@ -3725,6 +3879,7 @@ const PANEL_LAYOUT = {
       {
         "type": "custom:tide16-bars",
         "level_gain": 1.1,
+        "idle_entity": "switch.tide16_audiophile_quotes",
         "style": {
           "left": "17.739%",
           "top": "21.500%",
@@ -5073,6 +5228,10 @@ function withSpectrum(layout, spec) {
     // entity to watch. With the unit away it empties and the idle panel takes
     // the window, exactly as the channel meter does.
     gone_entity: 'media_player.tide16',
+    // The idle panel belongs to the WINDOW, not to whichever meter happens
+    // to be drawing it, so the quotes switch reaches this one too. Before
+    // the spread, so a spectrum that states its own still wins.
+    idle_entity: channels.idle_entity,
     ...rest,
   };
 

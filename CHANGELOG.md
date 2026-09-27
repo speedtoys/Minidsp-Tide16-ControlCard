@@ -1,5 +1,59 @@
 # Changelog
 
+## v2.6.0 - 2026-09-26
+
+### The channel names, written up the bars
+
+`tide16-bars` gained `names`.  The plate has `tide16-channels` under it to
+say what each output drives, but a bare meter box has nothing under it at
+all, and at a sixteenth of the card there is no room to write `SBL` across
+a column.  Turned on its side there is: the legend's own abbreviation reads
+up each column, bottom to top, on the bar pitch, every name starting on the
+line against the baseline whatever its length.  With `numbers: false` they
+replace the `1`-`16` row outright.
+
+Only the decoder's own assignment is named.  An output named by hand in the
+unit's web UI is somebody's words for their own wiring - any length, and
+silent about the surround layout the meter exists to show - so its column is
+left blank, as is the unassigned tail.  The legend still prints those as they
+were typed.
+
+Off by default, and sized with `names_size` / `names_gap` / `names_height` /
+`names_color` / `names_weight`.  Note that `cqw` resolves against a card that
+declares itself a container: the panel card does, a hand-built
+`picture-elements` card does not, so size the names in `px` there.
+
+### An off switch for the audiophile quotes
+
+`switch.tide16_audiophile_quotes`.  The idle panel's scrolling nonsense is an
+easter egg, and an easter egg needs a way out that does not involve editing a
+card.  The switch touches nothing on the unit, restores across a restart, and
+stays available while the unit is away - which is precisely when the strings
+are on screen.  `tide16-bars` follows it through the new `idle_entity` /
+`idle_off_states`; an install without the entity behaves exactly as before.
+
+### A mini tile for a dashboard column
+
+The README now carries a compact tile: volume, source, the decoder badge,
+Dirac and ART on the left, the meter with its channel names on the right,
+all in one ordinary `picture-elements` card that fits a single column.  It
+is sized in `px`, not `cqw`, because a hand-built card is not a container.
+See "The mini tile" in the README.
+
+### Which kind of Dirac filter is loaded
+
+`sensor.tide16_dirac_filter_type` - `Dirac Live`, `Dirac Live Bass Control`
+or `Dirac Active Room Treatment`, with the filter's name and index as
+attributes.  It is the only way to tell an ART filter from a plain one, so a
+dashboard can light an ART badge.  Read from `get_dirac_filter`, which nothing
+pushes: it is re-read whenever the filter index or Dirac slot changes, and on
+the usual sweep.
+
+### Fixed
+
+- `tide16-bars`' name source defaulted to `sensor.tide16_channel_levels`, a
+  sensor this integration does not create.  It is `sensor.tide16_channel_names_held`.
+
 ## v2.5.7 - 2026-09-10
 
 ### Naming a preset broke every automation that used it

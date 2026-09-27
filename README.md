@@ -168,6 +168,172 @@ measured boxes in someone's dashboard config is a thousand lines that
 cannot be fixed by an update.  Carried in the module, the geometry ships
 with the integration and a release can correct it.
 
+### The mini tile - volume, source and the meter in one card
+
+![the Tide16 mini tile on an Overview dashboard](docs/tile.png)
+
+*The tile on my Overview, mid-session: -47.5 dB, Roku, Dolby upmixing
+through Dirac Live, with the 13 assigned outputs named up their columns.*
+
+The panel is the whole front of the unit, and it is too wide for a
+dashboard column.  The tile is the small version: volume, source and what
+the decoder is doing on the left, the sixteen bars on the right.  It is
+ordinary `picture-elements` config built from the same elements, so every
+box in it can be moved.
+
+```yaml
+type: picture-elements
+# A plain dark 1000x280 canvas.  The proportions set the tile's height:
+# 280/1000 of the column's width.
+image: >-
+  data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'
+  viewBox='0 0 1000 280'><rect width='1000' height='280' fill='%230b1013'/></svg>
+elements:
+  # --- the meter, with each output's name written up its column ----------
+  - type: custom:tide16-bars
+    names: true
+    numbers: false
+    names_size: 11px
+    names_gap: 3px
+    names_height: 30px
+    idle_entity: switch.tide16_audiophile_quotes
+    style: {left: 31%, top: 3%, width: 68%, height: 65%, transform: translate(0, 0)}
+
+  # --- volume: big whole number, small "dB" and decimal ------------------
+  - type: custom:tide16-readout
+    size: 46px
+    color: '#E7E8E8'
+    row_gap: '0'
+    align: right
+    rows: [{entity: sensor.tide16_volume_integer, placeholder: '-.-'}]
+    style: {right: 79.5%, left: unset, top: 3%, transform: translate(0, 0)}
+  - type: custom:tide16-readout
+    title: dB
+    title_size: 16px
+    title_gap: '0'
+    style: {left: 20.8%, top: 5.5%, transform: translate(0, 0)}
+  - type: custom:tide16-readout
+    size: 24px
+    color: '#DFE0E0'
+    row_gap: '0'
+    rows: [{entity: sensor.tide16_volume_decimal, prefix: ., placeholder: ''}]
+    style: {left: 20.6%, top: 21%, transform: translate(0, 0)}
+
+  # --- source ------------------------------------------------------------
+  - type: custom:tide16-readout
+    title: Source
+    title_size: 12px
+    title_gap: 3px
+    size: 18px
+    color: '#E7E8E8'
+    scroll: true
+    rows: [{entity: sensor.tide16_source}]
+    style: {left: 3.5%, top: 47%, width: 24%, transform: translate(0, 0)}
+
+  # --- the two rules -----------------------------------------------------
+  - type: custom:tide16-readout
+    title: "\u00a0"
+    title_size: '0'
+    title_gap: '0'
+    style: {left: 2%, top: 45%, width: 26%, height: 1px, background: '#444444', transform: translate(0, 0)}
+  - type: custom:tide16-readout
+    title: "\u00a0"
+    title_size: '0'
+    title_gap: '0'
+    style: {left: 29%, top: 4%, width: 1px, height: 92%, background: '#444444', transform: translate(0, 0)}
+
+  # --- decoder badge: Atmos wins, then whichever upmixer is running --------
+  - type: conditional
+    conditions: [{entity: binary_sensor.tide16_atmos, state: 'on'}]
+    elements:
+      - &badge
+        type: image
+        image: /tide16_static/badge-dolby-atmos.png
+        style: {left: 3.5%, top: 81%, width: 11.5%, transform: translate(0, 0), pointer-events: none}
+  - type: conditional
+    conditions:
+      - {entity: binary_sensor.tide16_atmos, state: 'off'}
+      - {entity: select.tide16_upmixer, state: DTS-X}
+    elements: [{<<: *badge, image: /tide16_static/badge-dtsx.png}]
+  - type: conditional
+    conditions:
+      - {entity: binary_sensor.tide16_atmos, state: 'off'}
+      - {entity: select.tide16_upmixer, state: Dolby}
+    elements: [{<<: *badge, image: /tide16_static/badge-dolby-audio.png}]
+
+  # --- Dirac, and ART when the loaded filter is one ----------------------
+  - type: conditional
+    conditions: [{entity: switch.tide16_dirac_live, state: 'on'}]
+    elements:
+      - type: image
+        image: /tide16_static/dirac-white.png
+        style: {left: 16.2%, top: 81.5%, width: 4.4%, transform: translate(0, 0), pointer-events: none}
+  - type: conditional
+    conditions:
+      - {entity: switch.tide16_dirac_live, state: 'on'}
+      - {entity: sensor.tide16_dirac_filter_type, state: Dirac Active Room Treatment}
+    elements:
+      - type: custom:tide16-readout
+        title: ART
+        title_size: 13px
+        title_color: '#FFFFFF'
+        title_gap: '0'
+        style: {left: 21.4%, top: 85%, transform: translate(0, 0)}
+```
+
+**Showing it as a mini tile.**  On any dashboard: Edit > Add card >
+**Manual**, paste the YAML above, and save.  It needs nothing installed
+beyond this integration.
+
+- **Masonry view** (the default Overview): it takes one column, like any
+  other card, and its height follows the column's width.  Drag it wherever
+  it should sit.
+- **Sections view**: give it the section's full width, or the left block
+  crowds the meter.  Widening the section alone is not enough - the card
+  has to ask for the columns itself:
+
+  ```yaml
+  grid_options:
+    columns: full
+    rows: auto
+  ```
+
+- **Hiding it while the unit is in standby**: wrap it in a `conditional`
+  card on `media_player.tide16` not being `off`.  Left alone, it shows
+  dashes for the volume and source, and the idle panel's quotes in the
+  meter window (`switch.tide16_audiophile_quotes` turns those off).
+
+**Sizes are in `px` here, not `cqw`.**  `cqw` is a percent of the nearest
+container, and a hand-built `picture-elements` card does not declare itself
+one.  With nothing declared, `cqw` quietly resolves against the browser
+window and the volume comes out four times too big.  Declaring it through
+card-mod works only some of the time, because card-mod can load after the
+card has already been drawn.  The `px` values are tuned for a normal
+dashboard column (about 435 px wide) and still fit on a phone (about
+375 px).  They do not shrink with the tile, so a narrower column crowds, and
+a three-digit volume (-100 and below) can run off the left edge at phone width.
+
+**The badge row reads three things.**
+
+| Shows | When |
+|---|---|
+| Dolby Atmos | `binary_sensor.tide16_atmos` is on |
+| DTS:X / Dolby Audio | Not Atmos, and `select.tide16_upmixer` is `DTS-X` / `Dolby`.  Nothing for `Native` |
+| Dirac mark | `switch.tide16_dirac_live` is on |
+| ART | Dirac is on **and** `sensor.tide16_dirac_filter_type` is `Dirac Active Room Treatment` |
+
+`sensor.tide16_dirac_filter_type` is new in v2.6.0, and it is the only way
+to tell an ART filter from a plain Dirac Live or Bass Control one.  The
+unit does not announce a filter change, so the integration re-reads it
+whenever the filter index or the Dirac slot changes.  There is no ART
+artwork, so the tag is text.
+
+**The rules are empty readouts.**  A `tide16-readout` with a
+non-breaking-space title and a zero font size is just a box you can place,
+and `background` fills it.  Write the title as `"\u00a0"` in double
+quotes: a bare `title:` is null to YAML, and a readout with no title and no
+rows refuses to load.
+
 ### `tide16-bars` - the 16-channel meter
 
 Frames the **meter window**, the area the bars sweep.  Draws its own
@@ -183,6 +349,47 @@ they cannot drift out of register with them.
 | `transition_ms` | `260` | Bar animation, ≈ the 250 ms push |
 | `numbers` | `true` | Draw the 1-16 labels |
 | `numbers_size` / `numbers_gap` / `numbers_color` / `numbers_weight` | `0.748cqw` / `0.236cqw` / `#FFFFFF` / `500` | |
+| `names` | `false` | Writes each output's name up its own column - see below |
+| `names_entity` / `names_attribute` / `names_custom_attribute` | `sensor.tide16_channel_names_held` / `channel_names` / `custom_channels` | The integration's own name sensor |
+| `names_size` / `names_gap` / `names_height` / `names_color` / `names_weight` | `0.62cqw` / `0.3cqw` / `6cqw` / `#B7B8B8` / `400` | `names_height` is where a long name clips |
+| `names_unassigned` | `''` | Printed under outputs the device never assigned |
+| `idle` | `true` | The idle panel - see below |
+| `idle_entity` | `null` | Entity that turns the idle panel on and off at run time |
+| `idle_off_states` | `['off']` | The states of that entity which mean off |
+
+**Vertical channel names.**  The plate has `tide16-channels` under it to
+say what each output drives, but a bare meter box has nothing under it at
+all, and at a sixteenth of the card there is no room to write `SBL` across
+a column.  Turned on its side there is: `names: true` writes the legend's
+own abbreviation up each column, bottom to top, on the bar pitch.  Every
+name starts on the line against the baseline whatever its length, so sixteen of
+them read as a row rather than a ragged edge.  With `numbers: false` the
+names replace the `1`-`16` row outright.
+
+**Only the decoder's own assignment is named here.**  An output named by
+hand in the unit's web UI is somebody's words for their own wiring - any
+length, and silent about the surround layout the meter exists to show - so
+its column is left blank.  The legend under the plate is where those
+belong, and it still prints them as they were typed.  The assignment list
+stops at the last output the decoder assigned, and that tail gets
+`names_unassigned` too.
+
+Off by default: it costs height below the baseline, which the plate has
+not got to give.
+
+**The idle panel.**  With the unit in standby there are no levels to draw
+and the meter window is dead space, so it gets used: a line of audiophile
+nonsense scrolls across it, one at a time, on a different row each time.
+It is an easter egg, and `idle: false` has always turned it off in the
+YAML.
+
+`idle_entity` is the same choice made at run time.  The panel card points
+it at **`switch.tide16_audiophile_quotes`**, an integration switch that
+touches nothing on the unit and survives a restart - so the strings can be
+turned off from the entity page, a tile, or a script, without editing a
+card.  It is a preference rather than a gate: anything but a stated
+off-state counts as on, so an install without that entity behaves exactly
+as it always has.
 
 ### `tide16-channels` - the output legend
 

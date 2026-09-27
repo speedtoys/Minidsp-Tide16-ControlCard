@@ -43,6 +43,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .api import Tide16Client, Tide16Error
 from .api.const import (
     CHANNEL_COUNT,
+    GET_DIRAC_FILTER,
     GET_RMS_DB,
     GET_SETTINGS,
     N_BLUETOOTH,
@@ -127,6 +128,11 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.levels: list[float] = [SILENCE_DB] * CHANNEL_COUNT
         self._signal = False
         self._signal_seen = 0.0
+
+        # The filter index get_settings last reported, so a change of filter -
+        # made here, on the unit, or from miniDSP's own app - re-reads the
+        # filter's record instead of waiting out the minute-long sweep.
+        self._dirac_index: Any = None
 
         # The two halves of the channel legend, kept apart because they arrive
         # in separate replies in no fixed order and either one has to be able
@@ -508,9 +514,26 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _apply_dirac(self, data: Any) -> None:
         if isinstance(data, dict):
+            if data.get("selected_slot") != (self.data.get("dirac") or {}).get("selected_slot"):
+                self._ask(GET_DIRAC_FILTER)
             self.data["dirac"] = data
         elif isinstance(data, bool):
             self.data["dirac"] = {**(self.data.get("dirac") or {}), "enabled": data}
+
+    def _apply_dirac_filter(self, data: Any) -> None:
+        """The loaded filter's record. An empty reply means no filter at all."""
+        if not isinstance(data, dict):
+            return
+        self.data["dirac_filter"] = {
+            "index": data.get("index"),
+            "name": _clean(data.get("description") or data.get("name")),
+            "type": _clean(data.get("filter_type")),
+        } if data else {}
+
+    def _ask(self, endpoint: str) -> None:
+        """Send a request from inside a (synchronous) applier."""
+        if self._client.connected:
+            self.hass.async_create_task(self._client.send(endpoint))
 
     def _apply_dirac_measuring(self, value: Any) -> None:
         if isinstance(value, bool):
@@ -533,6 +556,11 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         self.data["settings"] = data
+
+        index = data.get("dirac_filter_index")
+        if index != self._dirac_index:
+            self._dirac_index = index
+            self._ask(GET_DIRAC_FILTER)
 
         sources = data.get("sources")
         if isinstance(sources, dict):
@@ -609,6 +637,7 @@ def _blank() -> dict[str, Any]:
         "settings": {},
         "dirac": {},
         "dirac_measuring": None,
+        "dirac_filter": {},
         "bluetooth": {},
         "dolby_profile": None,
         "upmixer": None,
@@ -631,6 +660,7 @@ _REPLY_APPLIERS = {
     "get_custom_out_port_names": Tide16Coordinator._apply_custom_port_names,
     "get_dirac_state": Tide16Coordinator._apply_dirac,
     "get_dirac_measuring_mode": Tide16Coordinator._apply_dirac_measuring,
+    "get_dirac_filter": Tide16Coordinator._apply_dirac_filter,
     "get_bluetooth_status": Tide16Coordinator._apply_bluetooth,
     "get_settings": Tide16Coordinator._apply_settings,
 }
