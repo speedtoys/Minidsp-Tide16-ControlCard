@@ -21,9 +21,6 @@ source, decoder and centred when they do not fill it.  With `labels: names`
 and all three, it is the v2.6.0 tile to the percent.  A value it does not
 know is an error in the card, not a part silently left off.
 
-The tile carries the version in its bottom-right corner, as the plate does,
-so a screenshot says which release it shows.  `version: false` drops it.
-
 The hand-built YAML is still in the README, folded under "Building it by
 hand", for anyone who wants to move a box the card has no option for.
 

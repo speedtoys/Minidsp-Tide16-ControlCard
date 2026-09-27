@@ -170,11 +170,11 @@ with the integration and a release can correct it.
 
 ### `custom:tide16-mini` - the mini tile
 
-![the Tide16 mini tile on an Overview dashboard](docs/tile.png?v=2.6.1)
+![the Tide16 mini tile on an Overview dashboard](docs/tile.png?h=d58ed6a4)
 
 *The tile on my Overview with every part switched on: -38.5 dB, Roku, Dolby
 upmixing through Dirac Live, and the 13 assigned outputs named up their
-columns.  The version it was taken at is in the bottom-right corner.*
+columns.*
 
 The panel is the whole front of the unit, and it is too wide for a
 dashboard column.  The tile is the small version, and every part of it
@@ -197,10 +197,9 @@ side: [volume, source, decoder]
 |---|---|---|
 | `labels` | `none` | What goes under the bars.  `numbers` is the `1`-`16` row, `names` is the decoder's name for each output written up its column, `both` is the numbers with the names under them |
 | `side` | none | A box on the left, holding any of `volume`, `source` and `decoder`.  Leave it out and the bars take the whole width |
-| `version` | `true` | The integration's version, small and grey in the bottom-right corner.  `false` drops it and gives the meter the strip it sat in |
 | `bars` | | Any other [`tide16-bars`](#tide16-bars---the-16-channel-meter) option, passed straight through - `level_gain`, `idle: false` and so on |
 
-![the tile bars only, with numbers, and with numbers, names and the source alone](docs/tile-options.png?v=2.6.1)
+![the tile bars only, with numbers, and with numbers, names and the source alone](docs/tile-options.png?h=c9978020)
 
 *Top to bottom: nothing set; `labels: numbers`; `labels: both` with
 `side: [source]`.*

@@ -5108,7 +5108,6 @@ if (!window.customCards.some((c) => c.type === 'tide16-panel')) {
  *
  *   labels: none | numbers | names | both   (under the bars)
  *   side: [volume, source, decoder]         (the box on the left)
- *   version: false                          (drop the corner stamp)
  *
  * Nothing set is the bare meter across the whole tile.  The side box always
  * stacks volume, source, decoder in that order, whichever are listed, and is
@@ -5272,9 +5271,7 @@ function miniLayout(config) {
     left: miniPct(left),
     top: '3%',
     width: miniPct(side.length ? 68 : 97),
-    // The corner stamp gets a strip of its own under the labels, or column
-    // 16 would run into it.
-    height: `calc(94% - ${MINI_LABEL_PX[labels] + (config.version === false ? 0 : 11)}px)`,
+    height: `calc(94% - ${MINI_LABEL_PX[labels]}px)`,
   });
   elements.push(bars);
 
@@ -5291,19 +5288,6 @@ function miniLayout(config) {
       }
     });
     elements.push(miniRule({ left: '29%', top: '4%', width: '1px', height: '92%' }));
-  }
-
-  // The plate carries its version in a corner, and so does the tile - a
-  // screenshot then says which release it shows.  `version: false` drops it.
-  if (config.version !== false) {
-    elements.push({
-      type: 'custom:tide16-readout',
-      title: `v${TIDE16_VERSION}`,
-      title_size: '9px',
-      title_color: '#606060',
-      title_gap: '0',
-      style: { right: '1%', left: 'unset', bottom: '1.5%', top: 'unset', transform: 'translate(0, 0)' },
-    });
   }
 
   return {
