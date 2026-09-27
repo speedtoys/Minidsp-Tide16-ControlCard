@@ -8,7 +8,7 @@ device.
 
 ![the Tide16 panel, live](docs/screenshot.png)
 
-*My system, mid-session, meter live.  It runs 7.2.4, so 13 outputs are
+*My system runs 7.2.4, so 13 outputs are
 assigned and the legend names them; yours will show your own layout.*
 
 ## What's here
@@ -17,7 +17,7 @@ assigned and the legend names them; yours will show your own layout.*
 |---|---|
 | `custom_components/tide16/` | The integration: a WebSocket client for the Tide16, every entity the panel needs, and the card itself |
 | `custom_components/tide16/api/` | The protocol on its own, with no Home Assistant imports - runnable from a terminal |
-| `custom_components/tide16/frontend/` | The card - `custom:tide16-panel` - plus the nine `picture-elements` elements it is built from, the plate and the glyphs.  Served by the integration at `/tide16_static/` |
+| `custom_components/tide16/frontend/` | The cards - `custom:tide16-panel` and `custom:tide16-mini` - plus the nine `picture-elements` elements it is built from, the plate and the glyphs.  Served by the integration at `/tide16_static/` |
 | `lovelace/tide16-panel.yaml` | An example view, for the dedicated full-page look.  Not needed to use the card |
 | `docs/panel-layout.annotated.yaml` | Where every element box on the plate is measured and explained.  The card carries the same geometry as data; `tools/build_layout.py` writes it and `tools/check_layout_sync.py` proves the two agree |
 
@@ -168,18 +168,100 @@ measured boxes in someone's dashboard config is a thousand lines that
 cannot be fixed by an update.  Carried in the module, the geometry ships
 with the integration and a release can correct it.
 
-### The mini tile - volume, source and the meter in one card
+### `custom:tide16-mini` - the mini tile
 
 ![the Tide16 mini tile on an Overview dashboard](docs/tile.png)
 
-*The tile on my Overview, mid-session: -47.5 dB, Roku, Dolby upmixing
-through Dirac Live, with the 13 assigned outputs named up their columns.*
+*The tile on my Overview with every part switched on: -38.5 dB, Roku, Dolby
+upmixing through Dirac Live, and the 13 assigned outputs named up their
+columns.  The version it was taken at is in the bottom-right corner.*
 
 The panel is the whole front of the unit, and it is too wide for a
-dashboard column.  The tile is the small version: volume, source and what
-the decoder is doing on the left, the sixteen bars on the right.  It is
-ordinary `picture-elements` config built from the same elements, so every
-box in it can be moved.
+dashboard column.  The tile is the small version, and every part of it
+except the bars is an option.  Nothing set is the bare meter across the
+whole tile:
+
+```yaml
+type: custom:tide16-mini
+```
+
+The tile above is:
+
+```yaml
+type: custom:tide16-mini
+labels: names
+side: [volume, source, decoder]
+```
+
+| Option | Default | |
+|---|---|---|
+| `labels` | `none` | What goes under the bars.  `numbers` is the `1`-`16` row, `names` is the decoder's name for each output written up its column, `both` is the numbers with the names under them |
+| `side` | none | A box on the left, holding any of `volume`, `source` and `decoder`.  Leave it out and the bars take the whole width |
+| `version` | `true` | The integration's version, small and grey in the bottom-right corner.  `false` drops it and gives the meter the strip it sat in |
+| `bars` | | Any other [`tide16-bars`](#tide16-bars---the-16-channel-meter) option, passed straight through - `level_gain`, `idle: false` and so on |
+
+![the tile bars only, with numbers, and with numbers, names and the source alone](docs/tile-options.png)
+
+*Top to bottom: nothing set; `labels: numbers`; `labels: both` with
+`side: [source]`.*
+
+**The side box keeps its order.**  Volume on top, then source, then the
+decoder, however they are listed.  A part left out is not drawn at all -
+there is no empty slot where it was - and whatever is left is centred in the
+tile's height.  The rule under the volume appears only when something
+follows it.
+
+**A misspelt option is an error, not a blank.**  `labels: name` or
+`side: [volum]` puts the card in its error state and says which values it
+takes, rather than quietly leaving the part off.
+
+**Adding it.**  On any dashboard: Edit > Add card, and pick **miniDSP
+Tide16 Mini Tile** - or **Manual** and one of the configs above.  It needs
+nothing installed beyond this integration.
+
+- **Masonry view** (the default Overview): it takes one column, like any
+  other card, and its height follows the column's width.  Drag it wherever
+  it should sit.
+- **Sections view**: with a side box the card asks for the section's full
+  width by itself, because the left block crowds the meter in anything
+  narrower.  Bars only, it asks for half.  Widening the section is still up
+  to you.
+- **Hiding it while the unit is in standby**: wrap it in a `conditional`
+  card on `media_player.tide16` not being `off`.  Left alone, it shows
+  dashes for the volume and source, and the idle panel's quotes in the
+  meter window (`switch.tide16_audiophile_quotes` turns those off).
+
+**Sizes are in `px`, not `cqw`.**  `cqw` is a percent of the nearest
+container, and the `picture-elements` card the tile is built on does not
+declare itself one.  With nothing declared, `cqw` quietly resolves against the browser
+window and the volume comes out four times too big.  Declaring it through
+card-mod works only some of the time, because card-mod can load after the
+card has already been drawn.  The `px` values are tuned for a normal
+dashboard column (about 435 px wide) and still fit on a phone (about
+375 px).  They do not shrink with the tile, so a narrower column crowds, and
+a three-digit volume (-100 and below) can run off the left edge at phone width.
+
+**The decoder section reads three things.**
+
+| Shows | When |
+|---|---|
+| Dolby Atmos | `binary_sensor.tide16_atmos` is on |
+| DTS:X / Dolby Audio | Not Atmos, and `select.tide16_upmixer` is `DTS-X` / `Dolby`.  Nothing for `Native` |
+| Dirac mark | `switch.tide16_dirac_live` is on |
+| ART | Dirac is on **and** `sensor.tide16_dirac_filter_type` is `Dirac Active Room Treatment` |
+
+`sensor.tide16_dirac_filter_type` is new in v2.6.0, and it is the only way
+to tell an ART filter from a plain Dirac Live or Bass Control one.  The
+unit does not announce a filter change, so the integration re-reads it
+whenever the filter index or the Dirac slot changes.  There is no ART
+artwork, so the tag is text.
+
+**Building it by hand.**  The card writes an ordinary `picture-elements`
+config and renders that.  If you want to move a box it has no option for,
+this is the same tile, every part on, as config you can edit:
+
+<details>
+<summary>The full tile as <code>picture-elements</code> YAML</summary>
 
 ```yaml
 type: picture-elements
@@ -281,58 +363,13 @@ elements:
         style: {left: 21.4%, top: 85%, transform: translate(0, 0)}
 ```
 
-**Showing it as a mini tile.**  On any dashboard: Edit > Add card >
-**Manual**, paste the YAML above, and save.  It needs nothing installed
-beyond this integration.
-
-- **Masonry view** (the default Overview): it takes one column, like any
-  other card, and its height follows the column's width.  Drag it wherever
-  it should sit.
-- **Sections view**: give it the section's full width, or the left block
-  crowds the meter.  Widening the section alone is not enough - the card
-  has to ask for the columns itself:
-
-  ```yaml
-  grid_options:
-    columns: full
-    rows: auto
-  ```
-
-- **Hiding it while the unit is in standby**: wrap it in a `conditional`
-  card on `media_player.tide16` not being `off`.  Left alone, it shows
-  dashes for the volume and source, and the idle panel's quotes in the
-  meter window (`switch.tide16_audiophile_quotes` turns those off).
-
-**Sizes are in `px` here, not `cqw`.**  `cqw` is a percent of the nearest
-container, and a hand-built `picture-elements` card does not declare itself
-one.  With nothing declared, `cqw` quietly resolves against the browser
-window and the volume comes out four times too big.  Declaring it through
-card-mod works only some of the time, because card-mod can load after the
-card has already been drawn.  The `px` values are tuned for a normal
-dashboard column (about 435 px wide) and still fit on a phone (about
-375 px).  They do not shrink with the tile, so a narrower column crowds, and
-a three-digit volume (-100 and below) can run off the left edge at phone width.
-
-**The badge row reads three things.**
-
-| Shows | When |
-|---|---|
-| Dolby Atmos | `binary_sensor.tide16_atmos` is on |
-| DTS:X / Dolby Audio | Not Atmos, and `select.tide16_upmixer` is `DTS-X` / `Dolby`.  Nothing for `Native` |
-| Dirac mark | `switch.tide16_dirac_live` is on |
-| ART | Dirac is on **and** `sensor.tide16_dirac_filter_type` is `Dirac Active Room Treatment` |
-
-`sensor.tide16_dirac_filter_type` is new in v2.6.0, and it is the only way
-to tell an ART filter from a plain Dirac Live or Bass Control one.  The
-unit does not announce a filter change, so the integration re-reads it
-whenever the filter index or the Dirac slot changes.  There is no ART
-artwork, so the tag is text.
-
 **The rules are empty readouts.**  A `tide16-readout` with a
 non-breaking-space title and a zero font size is just a box you can place,
 and `background` fills it.  Write the title as `"\u00a0"` in double
 quotes: a bare `title:` is null to YAML, and a readout with no title and no
 rows refuses to load.
+
+</details>
 
 ### `tide16-bars` - the 16-channel meter
 

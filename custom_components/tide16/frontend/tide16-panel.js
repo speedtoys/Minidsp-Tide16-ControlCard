@@ -5099,6 +5099,296 @@ if (!window.customCards.some((c) => c.type === 'tide16-panel')) {
 }
 
 /**
+ * tide16-mini - the mini tile as a card, with its parts switched by option.
+ *
+ * The tile started as a block of picture-elements config in the README, and
+ * a block of config can only lose a part by somebody deleting elements and
+ * moving the rest by hand.  Here the layout is built from two options, so a
+ * part that is off is simply not drawn and the rest close up around it:
+ *
+ *   labels: none | numbers | names | both   (under the bars)
+ *   side: [volume, source, decoder]         (the box on the left)
+ *   version: false                          (drop the corner stamp)
+ *
+ * Nothing set is the bare meter across the whole tile.  The side box always
+ * stacks volume, source, decoder in that order, whichever are listed, and is
+ * centred in the tile's height when it does not fill it.  With all three the
+ * tile is the README's, to the percent.
+ *
+ * Every size is px.  A picture-elements card is not a container, so cqw
+ * would resolve against the viewport and the text would come out several
+ * times too big.
+ */
+const MINI_LABELS = ['none', 'numbers', 'names', 'both'];
+const MINI_SIDE = ['volume', 'source', 'decoder'];
+
+// How far the label row hangs below the meter box, which the box's height
+// gives back so the row lands inside the tile.  Font plus gap per line.
+const MINI_LABEL_PX = { none: 0, numbers: 15, names: 33, both: 48 };
+
+// Each side section's share of the tile's height, and its contents' offsets
+// from the top of that share.  Measured off the hand-built tile: volume
+// 0-45%, its rule at 45%, source 45-79%, decoder 79-100%.
+const MINI_SECTION_H = { volume: 45, source: 34, decoder: 21 };
+const MINI_RULE = '#444444';
+
+const miniPct = (n) => `${Math.round(n * 1000) / 1000}%`;
+const miniAt = (style) => ({ ...style, transform: 'translate(0, 0)' });
+
+// A titled-but-empty readout is just a positioned box - drawn as a rule.
+const miniRule = (style) => ({
+  type: 'custom:tide16-readout',
+  title: ' ',
+  title_size: '0',
+  title_gap: '0',
+  style: miniAt({ ...style, background: MINI_RULE }),
+});
+
+const miniBadge = (image, conditions, top) => ({
+  type: 'conditional',
+  conditions,
+  elements: [{
+    type: 'image',
+    image: `/tide16_static/${image}`,
+    style: miniAt({ left: '3.5%', top: miniPct(top), width: '11.5%', 'pointer-events': 'none' }),
+  }],
+});
+
+const MINI_SECTIONS = {
+  volume: (top) => [
+    {
+      type: 'custom:tide16-readout',
+      size: '46px',
+      color: '#E7E8E8',
+      row_gap: '0',
+      align: 'right',
+      rows: [{ entity: 'sensor.tide16_volume_integer', placeholder: '-.-' }],
+      style: miniAt({ right: '79.5%', left: 'unset', top: miniPct(top + 3) }),
+    },
+    {
+      type: 'custom:tide16-readout',
+      title: 'dB',
+      title_size: '16px',
+      title_color: '#808080',
+      title_gap: '0',
+      style: miniAt({ left: '20.8%', top: miniPct(top + 5.5) }),
+    },
+    {
+      type: 'custom:tide16-readout',
+      size: '24px',
+      color: '#DFE0E0',
+      row_gap: '0',
+      rows: [{ entity: 'sensor.tide16_volume_decimal', prefix: '.', placeholder: '' }],
+      style: miniAt({ left: '20.6%', top: miniPct(top + 21) }),
+    },
+  ],
+  source: (top) => [
+    {
+      type: 'custom:tide16-readout',
+      title: 'Source',
+      title_size: '12px',
+      title_gap: '3px',
+      size: '18px',
+      color: '#E7E8E8',
+      rows: [{ entity: 'sensor.tide16_source' }],
+      scroll: true,
+      style: miniAt({ left: '3.5%', top: miniPct(top + 2), width: '24%' }),
+    },
+  ],
+  decoder: (top) => {
+    const dirac = { entity: 'switch.tide16_dirac_live', state: 'on' };
+    const plain = { entity: 'binary_sensor.tide16_atmos', state: 'off' };
+    return [
+      miniBadge('badge-dolby-atmos.png',
+        [{ entity: 'binary_sensor.tide16_atmos', state: 'on' }], top + 2),
+      miniBadge('badge-dtsx.png',
+        [plain, { entity: 'select.tide16_upmixer', state: 'DTS-X' }], top + 2),
+      miniBadge('badge-dolby-audio.png',
+        [plain, { entity: 'select.tide16_upmixer', state: 'Dolby' }], top + 2),
+      {
+        type: 'conditional',
+        conditions: [dirac],
+        elements: [{
+          type: 'image',
+          image: '/tide16_static/dirac-white.png',
+          style: miniAt({ left: '16.2%', top: miniPct(top + 2.5), width: '4.4%', 'pointer-events': 'none' }),
+        }],
+      },
+      {
+        type: 'conditional',
+        conditions: [dirac,
+          { entity: 'sensor.tide16_dirac_filter_type', state: 'Dirac Active Room Treatment' }],
+        elements: [{
+          type: 'custom:tide16-readout',
+          title: 'ART',
+          title_size: '13px',
+          title_color: '#FFFFFF',
+          title_gap: '0',
+          style: miniAt({ left: '21.4%', top: miniPct(top + 6) }),
+        }],
+      },
+    ];
+  },
+};
+
+/** Read the two options, refusing anything that is not one of them - a typo
+ * that quietly drew nothing would look like a bug in the card. */
+function miniOptions(config) {
+  const labels = config.labels === undefined ? 'none' : String(config.labels);
+  if (MINI_LABELS.indexOf(labels) === -1) {
+    throw new Error(`tide16-mini: labels must be one of ${MINI_LABELS.join(', ')}`);
+  }
+  let side = config.side === undefined || config.side === null ? [] : config.side;
+  if (!Array.isArray(side)) side = [side];
+  side = side.map(String);
+  const bad = side.filter((s) => MINI_SIDE.indexOf(s) === -1);
+  if (bad.length) {
+    throw new Error(`tide16-mini: unknown side ${bad.join(', ')} - use ${MINI_SIDE.join(', ')}`);
+  }
+  // Fixed order, whatever order they were listed in.
+  return { labels, side: MINI_SIDE.filter((s) => side.indexOf(s) !== -1) };
+}
+
+function miniLayout(config) {
+  const { labels, side } = miniOptions(config);
+  const elements = [];
+
+  const bars = {
+    type: 'custom:tide16-bars',
+    level_gain: 1.1,
+    idle_entity: 'switch.tide16_audiophile_quotes',
+    numbers: labels === 'numbers' || labels === 'both',
+    numbers_size: '11px',
+    numbers_gap: '3px',
+    names: labels === 'names' || labels === 'both',
+    names_size: '11px',
+    names_gap: '3px',
+    names_height: '30px',
+    // Anything else tide16-bars takes, for whoever wants to tune the meter.
+    ...(config.bars || {}),
+  };
+  const left = side.length ? 31 : 1.5;
+  bars.style = miniAt({
+    left: miniPct(left),
+    top: '3%',
+    width: miniPct(side.length ? 68 : 97),
+    // The corner stamp gets a strip of its own under the labels, or column
+    // 16 would run into it.
+    height: `calc(94% - ${MINI_LABEL_PX[labels] + (config.version === false ? 0 : 11)}px)`,
+  });
+  elements.push(bars);
+
+  if (side.length) {
+    const total = side.reduce((sum, s) => sum + MINI_SECTION_H[s], 0);
+    let top = (100 - total) / 2;
+    side.forEach((s, i) => {
+      elements.push(...MINI_SECTIONS[s](top));
+      top += MINI_SECTION_H[s];
+      // The one rule the tile has always had: under the volume, when
+      // something follows it.
+      if (s === 'volume' && i < side.length - 1) {
+        elements.push(miniRule({ left: '2%', top: miniPct(top), width: '26%', height: '1px' }));
+      }
+    });
+    elements.push(miniRule({ left: '29%', top: '4%', width: '1px', height: '92%' }));
+  }
+
+  // The plate carries its version in a corner, and so does the tile - a
+  // screenshot then says which release it shows.  `version: false` drops it.
+  if (config.version !== false) {
+    elements.push({
+      type: 'custom:tide16-readout',
+      title: `v${TIDE16_VERSION}`,
+      title_size: '9px',
+      title_color: '#606060',
+      title_gap: '0',
+      style: { right: '1%', left: 'unset', bottom: '1.5%', top: 'unset', transform: 'translate(0, 0)' },
+    });
+  }
+
+  return {
+    type: 'picture-elements',
+    // A plain dark 1000x280 canvas; its proportions set the tile's height.
+    image: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 280'><rect width='1000' height='280' fill='%230b1013'/></svg>",
+    elements,
+  };
+}
+
+class Tide16Mini extends HTMLElement {
+  constructor() {
+    super();
+    this._token = 0;
+  }
+
+  setConfig(config) {
+    this._config = config || {};
+    // Thrown here, not at render, so the editor shows the error in place.
+    this._layout = miniLayout(this._config);
+    this._side = miniOptions(this._config).side;
+    this._card = null;
+    this.innerHTML = '';
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._card) this._card.hass = hass;
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  async _render() {
+    // Same guard as the panel: a later setConfig supersedes this run.
+    const token = ++this._token;
+    let card;
+    try {
+      const helpers = await window.loadCardHelpers();
+      if (token !== this._token) return;
+      card = helpers.createCardElement(this._layout);
+    } catch (err) {
+      if (token !== this._token) return;
+      this.textContent = `Tide16 mini tile failed to build: ${err}`;
+      return;
+    }
+    if (this._hass) card.hass = this._hass;
+    this.appendChild(card);
+    this._card = card;
+  }
+
+  getCardSize() {
+    return 3;
+  }
+
+  getGridOptions() {
+    // With the side box the left block crowds the meter below full width.
+    return this._side && this._side.length
+      ? { columns: 'full', rows: 'auto' }
+      : { columns: 6, min_columns: 3, rows: 'auto' };
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+}
+
+if (!customElements.get('tide16-mini')) {
+  customElements.define('tide16-mini', Tide16Mini);
+}
+
+if (!window.customCards.some((c) => c.type === 'tide16-mini')) {
+  window.customCards.push({
+    type: 'tide16-mini',
+    name: 'miniDSP Tide16 Mini Tile',
+    description:
+      'The 16-channel meter for a dashboard column, with optional channel numbers or names and a side box for volume, source and decoder.',
+    preview: true,
+    documentationURL: 'https://github.com/speedtoys/Minidsp-Tide16-ControlCard',
+  });
+}
+
+/**
  * Register with whichever registry the frontend actually ends up using.
  *
  * The integration serves this module through frontend.add_extra_js_url, and
@@ -5129,6 +5419,7 @@ const TIDE16_ELEMENTS = [
   ['tide16-select', Tide16Select],
   ['tide16-toggle', Tide16Toggle],
   ['tide16-panel', Tide16Panel],
+  ['tide16-mini', Tide16Mini],
 ];
 
 const tide16Register = (registry) => {

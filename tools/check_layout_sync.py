@@ -16,6 +16,7 @@ Run it before every release:  python3 tools/check_layout_sync.py
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ANNOTATED = ROOT / "docs" / "panel-layout.annotated.yaml"
 MODULE = ROOT / "custom_components" / "tide16" / "frontend" / "tide16-panel.js"
 NEEDLE = "const PANEL_LAYOUT = "
+STAMP = "v<version>"
 
 
 def from_yaml() -> dict:
@@ -32,6 +34,11 @@ def from_yaml() -> dict:
     card = view[0]["cards"][0]["cards"][0]
     if card["type"] != "picture-elements":
         raise SystemExit(f"{ANNOTATED}: expected a picture-elements card")
+    # The record's `title: v...` is the stamp as last drawn; the card fills in
+    # the running version, so only the placeholder is compared.
+    for el in card["elements"]:
+        if re.fullmatch(r"v\d+\.\d+\.\d+", str(el.get("title", ""))):
+            el["title"] = STAMP
     return {k: v for k, v in card.items() if k != "card_mod"}
 
 
@@ -47,7 +54,10 @@ def from_module() -> dict:
         elif ch == "}":
             depth -= 1
             if depth == 0:
-                return json.loads(src[start : end + 1])
+                # The plate stamp is the one non-JSON value: it reads the
+                # version off the module URL at run time (v2.5.7).
+                body = src[start : end + 1].replace("`v${TIDE16_VERSION}`", json.dumps(STAMP))
+                return json.loads(body)
     raise SystemExit(f"{MODULE}: PANEL_LAYOUT is not balanced")
 
 

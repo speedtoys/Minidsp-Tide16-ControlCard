@@ -1,5 +1,41 @@
 # Changelog
 
+## v2.6.1 - 2026-09-27
+
+### The mini tile is a card, and every part of it is an option
+
+`custom:tide16-mini`, in the card picker as "miniDSP Tide16 Mini Tile".
+The v2.6.0 tile was a block of `picture-elements` config in the README, and
+a block of config can only lose a part by somebody deleting elements and
+moving the rest by hand.  The card builds the same layout from options, so a
+part that is off is simply not drawn and the rest close up around it.
+
+    type: custom:tide16-mini
+    labels: names          # none | numbers | names | both
+    side: [volume, source, decoder]
+
+Nothing set is the bare meter across the whole tile.  `labels` puts the
+`1`-`16` numbers, the channel names, or both under the bars.  `side` adds
+the box on the left with any of the three sections, always stacked volume,
+source, decoder and centred when they do not fill it.  With `labels: names`
+and all three, it is the v2.6.0 tile to the percent.  A value it does not
+know is an error in the card, not a part silently left off.
+
+The tile carries the version in its bottom-right corner, as the plate does,
+so a screenshot says which release it shows.  `version: false` drops it.
+
+The hand-built YAML is still in the README, folded under "Building it by
+hand", for anyone who wants to move a box the card has no option for.
+
+### Fixed
+
+- `tools/check_layout_sync.py` had failed on every run since v2.5.7: the
+  plate stamp became `` `v${TIDE16_VERSION}` ``, which is not JSON.  Worse,
+  `tools/build_layout.py` would write the stale `v2.5.5` back over it.
+  Both now treat the stamp as a placeholder.  The check also caught
+  `idle_entity` missing from the annotated record since v2.6.0; it is there
+  now.  The shipped panel layout is unchanged.
+
 ## v2.6.0 - 2026-09-26
 
 ### The channel names, written up the bars

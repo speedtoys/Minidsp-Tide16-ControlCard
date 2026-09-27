@@ -17,6 +17,7 @@ any more.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ANNOTATED = ROOT / "docs" / "panel-layout.annotated.yaml"
 MODULE = ROOT / "custom_components" / "tide16" / "frontend" / "tide16-panel.js"
 NEEDLE = "const PANEL_LAYOUT = "
+STAMP = "v<version>"
 
 
 def main() -> int:
@@ -35,7 +37,14 @@ def main() -> int:
         raise SystemExit(f"{ANNOTATED}: expected a picture-elements card")
     layout = {k: v for k, v in card.items() if k != "card_mod"}
 
+    # The plate stamp is not a number to bake in: since v2.5.7 the card reads
+    # its version off the module URL, and a literal here would drift again.
+    for el in layout["elements"]:
+        if re.fullmatch(r"v\d+\.\d+\.\d+", str(el.get("title", ""))):
+            el["title"] = STAMP
+
     body = json.dumps(layout, indent=2, ensure_ascii=False)
+    body = body.replace(json.dumps(STAMP), "`v${TIDE16_VERSION}`")
     # Everything after the opening line is one level in, so the constant reads
     # like hand-written source rather than a pasted blob.
     body = "\n".join(("  " + ln if i else ln) for i, ln in enumerate(body.split("\n")))

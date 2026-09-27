@@ -67,6 +67,9 @@
                 # height is trimmed up to match. The dB scale itself is
                 # untouched - see level_gain.
                 level_gain: 1.1
+                # v2.6.0: the audiophile-quotes switch turns the idle panel's
+                # strings off without editing the card.
+                idle_entity: switch.tide16_audiophile_quotes
                 style:
                   left: 17.739%
                   top: 21.500%
