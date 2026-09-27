@@ -6,7 +6,7 @@ A photoreal front panel for the miniDSP Tide16 in Home Assistant - with a
 **live 16-channel output meter**, and every control on it wired to the
 device.
 
-![the Tide16 panel, live](docs/screenshot.png)
+![the Tide16 panel, live](docs/screenshot.png?v=2.6.1)
 
 *My system runs 7.2.4, so 13 outputs are
 assigned and the legend names them; yours will show your own layout.*
@@ -170,7 +170,7 @@ with the integration and a release can correct it.
 
 ### `custom:tide16-mini` - the mini tile
 
-![the Tide16 mini tile on an Overview dashboard](docs/tile.png)
+![the Tide16 mini tile on an Overview dashboard](docs/tile.png?v=2.6.1)
 
 *The tile on my Overview with every part switched on: -38.5 dB, Roku, Dolby
 upmixing through Dirac Live, and the 13 assigned outputs named up their
@@ -200,7 +200,7 @@ side: [volume, source, decoder]
 | `version` | `true` | The integration's version, small and grey in the bottom-right corner.  `false` drops it and gives the meter the strip it sat in |
 | `bars` | | Any other [`tide16-bars`](#tide16-bars---the-16-channel-meter) option, passed straight through - `level_gain`, `idle: false` and so on |
 
-![the tile bars only, with numbers, and with numbers, names and the source alone](docs/tile-options.png)
+![the tile bars only, with numbers, and with numbers, names and the source alone](docs/tile-options.png?v=2.6.1)
 
 *Top to bottom: nothing set; `labels: numbers`; `labels: both` with
 `side: [source]`.*
