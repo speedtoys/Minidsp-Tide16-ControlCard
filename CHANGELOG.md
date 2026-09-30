@@ -1,5 +1,62 @@
 # Changelog
 
+## v2.6.2 - 2026-09-30
+
+### Firmware updates, checked hourly
+
+Once an hour - and on reconnect, when a check is due - the integration asks
+the Tide16 to ask miniDSP's update server, the same check as "Check for
+updates" on the unit's own page.  It only ever asks: the endpoints that
+install are named in `api/const.py` so nothing sends them by accident.
+The front-panel controller's firmware is read alongside, installed and as
+packaged inside the Tide firmware.
+
+`binary_sensor.tide16_firmware_update` (diagnostic) is on when miniDSP has
+something newer or the front panel is behind the version the Tide carries
+for it.  Its attributes hold every firmware level, the server's answer word
+for word and when it was checked.  `sensor.tide16_versions` gains
+`front_panel` and `front_panel_packaged`.
+
+No false alarms is the rule.  The unit has no stable/beta setting and the
+check sends no channel, so what the server offers this unit already is its
+channel.  An answer counts as an update only when it plainly says so with
+no negation or failure in it - "Update server not available" is not one -
+and anything unrecognised leaves the sensor unknown, logged rather than
+guessed.  Only "No updates available" has been seen so far.  The front
+panel counts only when the packaged firmware is strictly newer: one flashed
+ahead of the package is not behind.
+
+On the plate, while an update is there, the Tide FW line goes bold and the
+update badge pulses to the right of the firmware rows.  Hovering the badge
+says where to install it.  The README's new "When the panel warns you"
+section says what each warning means and what to do about it.
+
+### The date and time on the plate
+
+Under the card version, bottom right: "Sept 30, 00:26", in the install's
+time zone and 24-hour time, day first where the install's country writes it
+that way.  The version stamp moved up to sit level with the firmware rows.
+
+`sensor.tide16_clock_offset` (diagnostic) is the Tide16's clock less Home
+Assistant's, read hourly off the `Date` header of the unit's control page -
+nothing on the WebSocket reports the time.  More than twelve hours out and
+the date goes bold red, with a hover note that the unit's NTP is not getting
+through.
+
+### Readout options
+
+`tide16-readout` rows take `alert_entity` / `alert_state`, `alert_color`,
+`alert_weight` and `alert_hint`, and `clock: true` with `offset_entity` /
+`offset_max`.  The readout takes a pulsing `badge`, optionally gated on an
+entity and with its own `hint`.  Hover notes are drawn by the card: the
+browser's own tooltip restarts on every repaint and never showed.
+
+### Fixed
+
+- An update check - from here, or from the unit's own page - left
+  `sensor.tide16_status` reading "Reaching update server..." for up to a
+  minute.  Those texts are no longer taken as the unit's status.
+
 ## v2.6.1 - 2026-09-27
 
 ### The mini tile is a card, and every part of it is an option

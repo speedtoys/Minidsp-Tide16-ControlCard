@@ -29,7 +29,13 @@ from typing import Any
 
 import aiohttp
 
-from .const import DEFAULT_PORT, MAX_VOLUME_DB, MIN_VOLUME_DB, POLL
+from .const import (
+    DEFAULT_PORT,
+    ENVELOPE_NOTIFICATIONS,
+    MAX_VOLUME_DB,
+    MIN_VOLUME_DB,
+    POLL,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -228,6 +234,8 @@ class Tide16Client:
             payload = obj.get("value")
             if payload is None:
                 payload = obj.get("data")
+            if name in ENVELOPE_NOTIFICATIONS:
+                payload = obj
             if self._on_notification is not None:
                 self._on_notification(name, obj if payload is None else payload)
             return

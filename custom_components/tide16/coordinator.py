@@ -30,25 +30,35 @@ stops.
 from __future__ import annotations
 
 import asyncio
+import email.utils
 import logging
+import re
 import statistics
 import time
 from typing import Any
+
+import aiohttp
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from .api import Tide16Client, Tide16Error
 from .api.const import (
     CHANNEL_COUNT,
+    CHECK_FOR_UPDATE,
     GET_DIRAC_FILTER,
+    GET_FRONT_PANEL_FW,
+    GET_FRONT_PANEL_PACKAGED_FW,
     GET_RMS_DB,
     GET_SETTINGS,
+    GET_STATUS,
     N_BLUETOOTH,
     N_DIRAC_MEASURING,
     N_DIRAC_STATE,
+    N_FRONT_PANEL_FW,
     N_MUTE,
     N_PRESET,
     N_SOURCE,
@@ -56,9 +66,13 @@ from .api.const import (
     N_SPEAKER_CONFIG,
     N_STATUS,
     N_STREAM,
+    N_UPDATE,
     N_VOLUME_DB,
     REFRESH_ENDPOINTS,
     SILENCE_DB,
+    UPDATE_PROGRESS_CODES,
+    UPDATE_PROGRESS_TEXTS,
+    WEB_PORT,
 )
 from .const import (
     DEFAULT_SILENCE_HOLD,
@@ -97,6 +111,12 @@ FAST_METERING = 0.1
 # 14-endpoint sweep up with it.
 SETTINGS_REFRESH = 5.0
 
+# How often to ask miniDSP's update server, by way of the unit - it is the unit
+# that goes out to the internet, not Home Assistant - and to read its clock.  A unit that was in
+# standby when a check fell due is checked when it comes back instead, so the
+# hour is a floor on how often, not a promise of when.
+UPDATE_CHECK = 3600.0
+
 DISCONNECTED_STATUS = "not connected"
 
 
@@ -133,6 +153,13 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         # made here, on the unit, or from miniDSP's own app - re-reads the
         # filter's record instead of waiting out the minute-long sweep.
         self._dirac_index: Any = None
+
+        # When the last update check went out, on the monotonic clock; None
+        # until the first one has.
+        self._update_asked: float | None = None
+        # Status texts that are really the update check talking - see
+        # _apply_status.  Seeded with the ones seen, grown by any new ones.
+        self._update_progress: set[str] = set(UPDATE_PROGRESS_TEXTS)
 
         # The two halves of the channel legend, kept apart because they arrive
         # in separate replies in no fixed order and either one has to be able
@@ -177,6 +204,9 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.hass.async_create_background_task(
                 self._settings_loop(), "tide16 settings"
             ),
+            self.hass.async_create_background_task(
+                self._update_loop(), "tide16 update check"
+            ),
         ]
 
     async def async_stop(self) -> None:
@@ -209,12 +239,77 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._sweep()
             await asyncio.sleep(FULL_REFRESH)
 
+    async def _read_clock(self) -> None:
+        """How far the unit's clock is from this one, in whole seconds.
+
+        Read off the `Date` header of the unit's control page, which is to the
+        second, so an offset of a second or two is only the header's rounding
+        and the round trip.  A unit whose NTP has not reached a server sits at
+        whatever it booted with, and that is minutes or years, not seconds.
+        """
+        session = async_get_clientsession(self.hass)
+        try:
+            async with session.head(
+                f"http://{self.host}:{WEB_PORT}/",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                stamp = resp.headers.get("Date")
+        except (aiohttp.ClientError, TimeoutError):
+            return
+        if not stamp:
+            return
+        try:
+            unit = email.utils.parsedate_to_datetime(stamp)
+        except (TypeError, ValueError):
+            return
+        offset = round((unit - dt_util.utcnow()).total_seconds())
+        if offset != self.data.get("clock_offset"):
+            self.data["clock_offset"] = offset
+            self.async_set_updated_data(self.data)
+
     async def _settings_loop(self) -> None:
         """Keep the settings-only values following the device, not just us."""
         while True:
             if self._client.connected:
                 await self._client.send(GET_SETTINGS)
             await asyncio.sleep(SETTINGS_REFRESH)
+
+    async def _update_loop(self) -> None:
+        """Ask for updates once an hour.
+
+        The first check is not made here: at startup the connection is not up
+        yet, so it is made on connecting instead - see _on_reconnect.
+        """
+        while True:
+            await asyncio.sleep(UPDATE_CHECK)
+            if self._client.connected and self._update_due:
+                await self.async_check_for_update()
+
+    @property
+    def _update_due(self) -> bool:
+        # A little short of the hour, so the loop's own check is never skipped
+        # for landing a few milliseconds early against the last one.
+        return (
+            self._update_asked is None
+            or time.monotonic() - self._update_asked >= UPDATE_CHECK - 60.0
+        )
+
+    async def async_check_for_update(self) -> None:
+        """Every firmware level, whether miniDSP has anything newer, and the clock.
+
+        The Tide, HDMI and XMOS versions need no asking here - get_settings
+        carries them every five seconds.  The front-panel controller's two do
+        not come from anywhere else, and neither does the server's answer.
+
+        The clock rides along: a unit that cannot reach an NTP server most
+        likely cannot reach miniDSP's update server either, so the two go
+        wrong together and are worth looking at on the same schedule.
+        """
+        self._update_asked = time.monotonic()
+        await self._read_clock()
+        for endpoint in (GET_FRONT_PANEL_FW, GET_FRONT_PANEL_PACKAGED_FW, CHECK_FOR_UPDATE):
+            if not await self._client.send(endpoint):
+                return
 
     async def _metering_loop(self) -> None:
         """Poll the levels, fast while something is watching.
@@ -259,13 +354,16 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         # dashes rather than printing a stale number.  Three things survive:
         # `status`, because "not connected" is itself the answer to print; the
         # held speaker names, so the meter's legend keeps naming the channels;
-        # and the firmware versions, which cannot change while the unit is off.
+        # and the firmware versions and the last update check, which cannot
+        # change while the unit is off.
         held = self.data.get("channel_names_held") or []
         versions = self.data.get("versions") or {}
+        update_check = self.data.get("update_check") or {}
         self.data = _blank()
         self.data["status"] = DISCONNECTED_STATUS
         self.data["channel_names_held"] = held
         self.data["versions"] = versions
+        self.data["update_check"] = update_check
         self._signal = False
         self._signal_seen = 0.0
         self.levels = [SILENCE_DB] * CHANNEL_COUNT
@@ -275,6 +373,8 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         # a moment for the coordinator process on the unit to finish coming up
         await asyncio.sleep(0.5)
         await self._sweep()
+        if self._update_due:
+            await self.async_check_for_update()
 
     # --- inbound -----------------------------------------------------------
 
@@ -419,8 +519,52 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         return result
 
     def _apply_status(self, value: Any) -> None:
-        if isinstance(value, str):
+        # An update check - ours, or one started from the unit's own page -
+        # sets the status to its progress text and leaves it there until the
+        # next read, a minute later.  That is not the unit's state, and an
+        # hourly check would put a minute of it in the history every hour.
+        if isinstance(value, str) and value not in self._update_progress:
             self.data["status"] = value
+
+    def _apply_update(self, envelope: Any) -> None:
+        """One `update` push: progress, or the server's answer."""
+        if not isinstance(envelope, dict):
+            return
+        text = _clean(envelope.get("value"))
+        code = envelope.get("code")
+        if text is None:
+            return
+        if code in UPDATE_PROGRESS_CODES:
+            self._update_progress.add(text)
+            return
+        available = _update_available(text)
+        if available is None:
+            # Worth seeing in the log: this is how the wording for an update
+            # that IS there will first turn up.
+            _LOGGER.info("Tide16 update check said %r (code %r)", text, code)
+        self.data["update_check"] = {
+            "result": text,
+            "code": code,
+            "available": available,
+            "checked_at": dt_util.utcnow().isoformat(),
+        }
+
+    def _apply_update_done(self, _data: Any) -> None:
+        # The reply comes after the answer.  The status the check left behind
+        # is still the unit's, so read the real one back now rather than
+        # holding the stale one until the next sweep.
+        self._ask(GET_STATUS)
+
+    def _apply_front_panel_fw(self, value: Any) -> None:
+        version = _clean(value)
+        if version is not None:
+            self.data["versions"]["front_panel"] = version
+
+    def _apply_front_panel_packaged_fw(self, data: Any) -> None:
+        if isinstance(data, list) and data:
+            self.data["versions"]["front_panel_packaged"] = ".".join(
+                str(part) for part in data
+            )
 
     def _apply_volume(self, value: Any) -> None:
         if isinstance(value, (int, float)):
@@ -585,7 +729,9 @@ class Tide16Coordinator(DataUpdateCoordinator[dict[str, Any]]):
         if isinstance(data.get("upmixer"), str):
             self.data["upmixer"] = data["upmixer"]
 
-        self.data["versions"] = {
+        # Merged, not replaced: the front panel's two versions live here too,
+        # and they arrive from their own endpoints once an hour, not from this.
+        self.data["versions"] |= {
             "tide": _clean(data.get("version")),
             "hdmi_card": _clean(data.get("hdmi_card_firmware_version")),
             "hdmi_xmos": _clean(data.get("hdmi_xmos_firmware_version")),
@@ -642,8 +788,47 @@ def _blank() -> dict[str, Any]:
         "dolby_profile": None,
         "upmixer": None,
         "versions": {},
+        "update_check": {},
+        "clock_offset": None,
         "signal": False,
     }
+
+
+# An answer that says any of these is not announcing an update, whatever else
+# it says - "Update server not available" contains "available" too.
+_NOT_AN_UPDATE = re.compile(
+    r"\b(no|not|none|unavailable|error|fail\w*|unable|cannot|can't|couldn't|"
+    r"timed?\s*out|unreachable)\b"
+)
+_AN_UPDATE = re.compile(
+    r"\b(update|firmware|version)s?\b.*\bavailable\b|\bnew (firmware|version|update)\b"
+)
+
+
+def _update_available(text: str) -> bool | None:
+    """What the server's answer says, or None when it is not clear.
+
+    Read from the words, not the code: the only answer seen so far is "No
+    updates available", code 1, and whether an available update shares that
+    code is not known.
+
+    True needs an answer that plainly announces one AND has no negation or
+    failure in it; the panel alarms on True, and a false alarm is the thing to
+    avoid.  Anything else that is not plainly "nothing new" - the server
+    unreachable, a wording not seen before - is None, which alarms nothing.
+
+    There is no update channel to reconcile this against: the unit has no
+    stable/beta setting, and check_for_update sends none.  What the server
+    offers this unit IS its channel.
+    """
+    lowered = text.lower()
+    if lowered.startswith("no update") or "up to date" in lowered:
+        return False
+    if _NOT_AN_UPDATE.search(lowered):
+        return None
+    if _AN_UPDATE.search(lowered):
+        return True
+    return None
 
 
 _REPLY_APPLIERS = {
@@ -663,6 +848,8 @@ _REPLY_APPLIERS = {
     "get_dirac_filter": Tide16Coordinator._apply_dirac_filter,
     "get_bluetooth_status": Tide16Coordinator._apply_bluetooth,
     "get_settings": Tide16Coordinator._apply_settings,
+    GET_FRONT_PANEL_PACKAGED_FW: Tide16Coordinator._apply_front_panel_packaged_fw,
+    CHECK_FOR_UPDATE: Tide16Coordinator._apply_update_done,
 }
 
 _PUSH_APPLIERS = {
@@ -677,4 +864,6 @@ _PUSH_APPLIERS = {
     N_DIRAC_MEASURING: Tide16Coordinator._apply_dirac_measuring,
     N_BLUETOOTH: Tide16Coordinator._apply_bluetooth,
     N_SPEAKER_CONFIG: Tide16Coordinator._apply_speaker_config,
+    N_UPDATE: Tide16Coordinator._apply_update,
+    N_FRONT_PANEL_FW: Tide16Coordinator._apply_front_panel_fw,
 }

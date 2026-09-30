@@ -755,8 +755,22 @@
               # foot of the panel: 386 - 42 = y344 = 86.000%.
               # Clear of the knob (y89..315) and of the Mute flag, which is
               # centred on the knob at x1681.
-              # Values come from get_settings via scripts/tide16_versions.py -
-              # the integration exposes no version of any kind.
+              # Values come from sensor.tide16_versions, which get_settings
+              # refreshes every five seconds.
+              #
+              # When binary_sensor.tide16_firmware_update is on - checked
+              # hourly against miniDSP's server, plus the front panel's
+              # installed firmware against the one the Tide carries for it -
+              # the Tide FW line goes bold burnt orange and the update badge
+              # pulses to the right of the pair.
+              #
+              # #A33F00 because the plate is flat #B3B3B3: a bright #FF8C00
+              # measured 1.11:1 against it - the same lightness as the grey -
+              # and vanished. This is 3.1:1, and bold carries the rest.
+              #
+              # The badge is sized 30% over the Reboot glyph, which draws at
+              # 0.688 of its 48px box on the 1990px plate: 33 x 1.3 = 43px =
+              # 2.157cqw. The readout centres it on the two rows as a block.
               - type: custom:tide16-readout
                 size: 0.980cqw
                 color: '#000'
@@ -765,27 +779,61 @@
                 - label: 'Tide FW:'
                   entity: sensor.tide16_versions
                   attribute: tide
+                  alert_entity: binary_sensor.tide16_firmware_update
+                  alert_color: '#A33F00'
+                  alert_weight: 700
                 - label: 'HDMI FW:'
                   entity: sensor.tide16_versions
                   attribute: hdmi
+                badge:
+                  image: /tide16_static/swu.png
+                  alt: Update available
+                  hint: Use the Device Console to update FW
+                  entity: binary_sensor.tide16_firmware_update
+                  size: 2.157cqw
+                  min_opacity: 0.05
+                  period: 2
                 style:
                   left: 69.397%
                   top: 86.000%
                   transform: translate(0, 0)
-              # The card's own version, bottom right of the silver end panel.
-              # One of three stamps that must agree - the others are the
-              # manifest version and TIDE16_VERSION in the module.
+              # The card's own version, bottom right of the silver end panel,
+              # with the date and time under it. The card fills the version in
+              # from the manifest at run time.
+              #
+              # Set and spaced as the Tide FW / HDMI FW pair and level with
+              # it (y344 = 86.000%), so the two blocks read as one line of
+              # small print across the foot of the panel.
+              #
+              # No width: with `right` set and `left: unset` the box
+              # shrink-wraps, so the date grows leftward from the edge
+              # instead of spilling off it.
+              #
+              # The date is "Sept 30, 00:26" - day first where the install's
+              # country writes it that way - in the install's time zone and
+              # 24-hour time. It goes bold #8B0000 (4.8:1 on the plate; #FF3B30
+              # was 1.7:1) with a hover note when the Tide16's own clock is more
+              # than twelve hours from Home Assistant's: a unit whose NTP never
+              # got through, not one that has drifted.
               - type: custom:tide16-readout
                 title: v2.5.5
                 title_size: 0.980cqw
                 title_color: '#000'
-                title_gap: '0'
+                title_gap: 0.150cqw
+                size: 0.980cqw
+                color: '#000'
+                rows:
+                - clock: true
+                  offset_entity: sensor.tide16_clock_offset
+                  offset_max: 43200
+                  alert_color: '#8B0000'
+                  alert_weight: 700
+                  alert_hint: The Tide16 NTP time updates are out of sync on the local network
                 align: right
                 style:
                   right: 0.854%
                   left: unset
-                  top: 91.625%
-                  width: 4.020%
+                  top: 86.000%
                   transform: translate(0, 0)
               # The decoder badge: one slot, four states, driven by plain
               # entity STATE so ordinary conditionals can do it.

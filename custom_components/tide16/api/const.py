@@ -23,6 +23,10 @@ from __future__ import annotations
 from typing import Final
 
 DEFAULT_PORT: Final = 5555
+# The unit's own control page.  Besides serving the page, its `Date` header is
+# the only view there is of the unit's clock - nothing on the WebSocket reports
+# the time.
+WEB_PORT: Final = 5050
 
 # --- reads -----------------------------------------------------------------
 GET_STATUS: Final = "get_coordinator_status"
@@ -45,6 +49,29 @@ GET_BLUETOOTH: Final = "get_bluetooth_status"
 GET_RMS_DB: Final = "get_rms_block_db"
 GET_SETTINGS: Final = "get_settings"
 POLL: Final = "poll"
+
+# The front-panel controller's firmware, as installed and as packaged inside
+# the Tide firmware.  The installed one does not come back in the reply - the
+# reply is a bare OK, and the version follows as a front_panel_fw_version push.
+# The packaged one is the reply's data, as a list: [1, 11] for "1.11".
+GET_FRONT_PANEL_FW: Final = "front_panel_get_fw_ver"
+GET_FRONT_PANEL_PACKAGED_FW: Final = "front_panel_get_packaged_fw_ver"
+
+# Asks the unit to ask miniDSP's update server.  Only asks: the unit's own
+# control page puts it next to "Force update", which is a separate endpoint and
+# the one that installs.  The answer arrives as `update` pushes - progress
+# first, then the result - and the reply lands last, after the result:
+#
+#     update  "Checking for updates..."    code 2
+#     update  "Reaching update server..."  code 0
+#     update  "No updates available"       code 1
+#
+# That is the whole of what has been seen, from a unit with nothing to install.
+# What it says when there IS something is not known yet.
+CHECK_FOR_UPDATE: Final = "check_for_update"
+# Everything these do is install or start installing.  Named so that nothing
+# here can send them by accident: this integration looks, it never updates.
+#   force_update, start_update_server, front_panel_start_firmware_update
 
 # Everything the unit pushes on its own is still requested once at connect,
 # and re-requested on the slow safety-net sweep in case a push was missed
@@ -108,6 +135,21 @@ N_DIRAC_MEASURING: Final = "dirac_measurement_mode"
 N_STREAM: Final = "stream_changes"
 N_BLUETOOTH: Final = "bluetooth_status"
 N_SPEAKER_CONFIG: Final = "speaker_config_number_change"
+N_UPDATE: Final = "update"
+N_FRONT_PANEL_FW: Final = "front_panel_fw_version"
+
+# Handed over as the whole envelope rather than just its value, because the
+# part that matters sits beside it: `update` carries its `code` there.
+ENVELOPE_NOTIFICATIONS: Final = frozenset({N_UPDATE})
+
+# The `update` codes that mean "still going" rather than "here is the answer".
+UPDATE_PROGRESS_CODES: Final = frozenset({0, 2})
+# While it checks, the unit also sets its own status to the progress text and
+# never sets it back - the next status read does.  These are the texts seen
+# doing it; any other progress text is learned as it arrives.
+UPDATE_PROGRESS_TEXTS: Final = frozenset(
+    {"Checking for updates...", "Reaching update server..."}
+)
 
 # --- ranges ----------------------------------------------------------------
 # The documented set_volume_db range: -127.5 dB is effectively silent, 0.0 is

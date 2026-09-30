@@ -2712,7 +2712,17 @@ const READOUT_DEFAULTS = {
   scroll_speed: 14, // CSS px per second. The plate renders at about 0.67 CSS px
   // per canvas px, so this is a slow walk, not a ticker.
   rows: [],
+  // A mark to the right of the rows, centred on them as a block, pulsing:
+  //   badge: { image, size, min_opacity, period, hint, entity, state }
+  // `period` is one fade, so a full dim-bright-dim cycle is twice it. With
+  // `entity` it is drawn only while that entity reads `state` ("on").
+  badge: null,
 };
+
+// Short month names for a `clock` row.  Written out rather than taken from
+// Intl, which says "Sep" in the US and "Sept" in the UK - the panel always
+// says "Sept".
+const T16_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 
 class Tide16Readout extends HTMLElement {
   constructor() {
@@ -2735,6 +2745,83 @@ class Tide16Readout extends HTMLElement {
     this._paint();
   }
 
+  // A `clock` row repaints itself on the minute; hass alone would only move it
+  // when some state happened to change.
+  connectedCallback() {
+    if (!this._cfg.rows.some((r) => r.clock)) return;
+    const tick = () => {
+      this._paint();
+      const now = new Date();
+      this._tick = setTimeout(tick, 60000 - (now.getSeconds() * 1000 + now.getMilliseconds()) + 50);
+    };
+    clearTimeout(this._tick);
+    tick();
+  }
+
+  disconnectedCallback() {
+    clearTimeout(this._tick);
+    this._tick = null;
+  }
+
+  /* A row in alert is drawn whole - label and value - in `alert_color` at
+     `alert_weight`, and shows `alert_hint` on hover if it has one. Two things
+     put a row in alert:
+
+       alert_entity   that entity reads `alert_state` ("on")
+       clock          the unit's own clock is more than `offset_max` seconds
+                      from Home Assistant's, read from `offset_entity`
+
+     `force_alert` holds it on, for seeing how it looks. */
+  _rowAlarm(el, row) {
+    let bad = !!row.force_alert;
+    if (!bad && row.alert_entity && this._hass) {
+      const st = this._hass.states[row.alert_entity];
+      bad = !!st && st.state === (row.alert_state == null ? 'on' : String(row.alert_state));
+    }
+    if (!bad && row.clock) {
+      const st = row.offset_entity && this._hass ? this._hass.states[row.offset_entity] : null;
+      const off = st ? Number(st.state) : NaN;
+      const max = row.offset_max == null ? 60 : Number(row.offset_max);
+      bad = Number.isFinite(off) && Math.abs(off) > max;
+    }
+    // Only touched when it flips: this runs on every hass tick, and writing
+    // the same styles over and over is wasted layout work.
+    if (el.classList.contains('alarm') === bad && el.dataset.hint === (row.alert_hint || '')) return;
+    el.classList.toggle('alarm', bad);
+    el.dataset.hint = row.alert_hint || '';
+    el.style.color = bad ? row.alert_color || '#8B0000' : '';
+    el.style.fontWeight = bad ? row.alert_weight || 700 : '';
+    if (this._tip) this._tip.textContent = bad ? row.alert_hint || '' : '';
+  }
+
+  /* "Sept 30, 00:26" - or "30 Sept, 00:26" where the country puts the day
+     first. The time zone and country are the Home Assistant install's, not the
+     browser's, so the plate reads the same from anywhere. */
+  _clock() {
+    const cfg = (this._hass && this._hass.config) || {};
+    const now = new Date();
+    const numeric = { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
+    let parts;
+    try {
+      parts = new Intl.DateTimeFormat('en-US', { ...numeric, timeZone: cfg.time_zone }).formatToParts(now);
+    } catch (e) {
+      parts = new Intl.DateTimeFormat('en-US', numeric).formatToParts(now); // unknown zone
+    }
+    const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+    let dayFirst = false;
+    try {
+      const order = new Intl.DateTimeFormat('en-' + (cfg.country || 'US'), { month: 'short', day: 'numeric' })
+        .formatToParts(now)
+        .map((x) => x.type);
+      dayFirst = order.indexOf('day') < order.indexOf('month');
+    } catch (e) {
+      /* unknown country: month first */
+    }
+    const month = T16_MONTHS[Number(p.month) - 1];
+    const date = dayFirst ? `${p.day} ${month}` : `${month} ${p.day}`;
+    return `${date}, ${p.hour}:${p.minute}`;
+  }
+
   _build() {
     const c = this._cfg;
     const root = this.shadowRoot || this.attachShadow({ mode: 'open' });
@@ -2742,6 +2829,18 @@ class Tide16Readout extends HTMLElement {
       <style>
         :host { display: block; position: absolute; pointer-events: none; }
         .block { text-align: ${c.align}; white-space: nowrap; }
+        .wrap { display: flex; align-items: center; gap: ${(c.badge && c.badge.gap) || '0.4cqw'}; }
+        .badge {
+          flex: none;
+          width: ${(c.badge && c.badge.size) || '1.659cqw'};
+          height: ${(c.badge && c.badge.size) || '1.659cqw'};
+          object-fit: contain;
+          animation: t16-pulse ${(c.badge && c.badge.period) || 2}s ease-in-out infinite alternate;
+        }
+        @keyframes t16-pulse {
+          from { opacity: ${c.badge && c.badge.min_opacity != null ? c.badge.min_opacity : 0.05}; }
+          to { opacity: 1; }
+        }
         .title {
           font-size: ${c.title_size};
           font-weight: 300;
@@ -2778,6 +2877,36 @@ class Tide16Readout extends HTMLElement {
           color: ${c.color};
         }
         .row + .row { padding-top: ${c.row_gap}; }
+        /* A clock row's warning. Drawn here rather than as a title attribute:
+           hass repaints this several times a second while the meter runs, and
+           the browser's own tooltip restarts on every repaint and never shows.
+           It is a sibling after the rows, so hovering the row can reveal it,
+           and it opens upward and leftward - the clock sits in the plate's
+           bottom-right corner, where down or right would be clipped. */
+        .row.alarm { pointer-events: auto; cursor: help; }
+        .tip {
+          display: none;
+          position: absolute;
+          right: 0;
+          bottom: calc(100% + 0.4cqw);
+          padding: 0.35cqw 0.6cqw;
+          border-radius: 0.35cqw;
+          background: rgba(20, 20, 20, 0.92);
+          color: #fff;
+          font-size: 0.85cqw;
+          font-weight: 400;
+          line-height: 1.2;
+          white-space: nowrap;
+          text-align: left;
+          box-shadow: 0 0.15cqw 0.5cqw rgba(0, 0, 0, 0.35);
+          pointer-events: none;
+          z-index: 10;
+        }
+        .row.alarm:hover ~ .tip { display: block; }
+        /* The badge's hint, the same way. A sibling rather than a child, so it
+           does not pulse along with the badge. */
+        .badge.hinted { pointer-events: auto; cursor: help; }
+        .badge.hinted:hover ~ .tip { display: block; }
         /* Scrolling rows. The row is the window and .txt is the thing that
            moves, so the type never leaves the cell it belongs to. Held still at
            each end for a share of the cycle - a name you cannot read the start
@@ -2798,6 +2927,7 @@ class Tide16Readout extends HTMLElement {
           .row.scrolling .txt { animation: none; }
         }
       </style>
+      <div class="wrap">
       <div class="block">
         ${c.title ? '<div class="title"></div>' : ''}
         ${c.rows
@@ -2805,7 +2935,25 @@ class Tide16Readout extends HTMLElement {
             c.scroll ? '<div class="row scroll"><span class="txt"></span></div>' : '<div class="row"></div>'
           )
           .join('')}
+      </div>
       </div>`;
+
+    if (c.badge && c.badge.image) {
+      const b = document.createElement('img');
+      b.className = 'badge';
+      b.src = c.badge.image;
+      b.alt = c.badge.alt == null ? '' : String(c.badge.alt);
+      root.querySelector('.wrap').append(b);
+      this._badge = b;
+      if (c.badge.hint) {
+        b.classList.add('hinted');
+        const tip = document.createElement('div');
+        tip.className = 'tip';
+        tip.setAttribute('role', 'tooltip');
+        tip.textContent = String(c.badge.hint);
+        root.querySelector('.wrap').append(tip);
+      }
+    }
 
     // textContent rather than interpolation, so a label or a value that
     // happens to contain markup stays text
@@ -2828,6 +2976,13 @@ class Tide16Readout extends HTMLElement {
       }
     }
     this._rowEls = [...root.querySelectorAll('.row')];
+    this._tip = null;
+    if (c.rows.some((r) => r.alert_hint)) {
+      this._tip = document.createElement('div');
+      this._tip.className = 'tip';
+      this._tip.setAttribute('role', 'tooltip');
+      root.querySelector('.block').append(this._tip);
+    }
     this._paint();
 
     // the plate scales with the window, so what fits changes with it
@@ -2839,12 +2994,22 @@ class Tide16Readout extends HTMLElement {
 
   _paint() {
     const c = this._cfg;
+    if (this._badge && c.badge.entity) {
+      const st = this._hass ? this._hass.states[c.badge.entity] : null;
+      const shown = !!st && st.state === (c.badge.state == null ? 'on' : String(c.badge.state));
+      // display, not visibility: hidden, it gives its space back and the rows
+      // sit exactly where they would with no badge configured at all
+      const want = shown ? '' : 'none';
+      if (this._badge.style.display !== want) this._badge.style.display = want;
+    }
     if (!this._rowEls.length) return;
     let changed = false;
     c.rows.forEach((r, i) => {
       const el = this._rowEls[i];
       if (!el) return;
-      const text = [r.label, this._value(r)].filter(Boolean).join(' ');
+      if (r.clock || r.alert_entity) this._rowAlarm(el, r);
+      const value = this._value(r);
+      const text = [r.label, value].filter(Boolean).join(' ');
       // .txt is the span that moves when the row scrolls; without scrolling the
       // row itself holds the text, exactly as before
       const target = c.scroll ? el.firstElementChild : el;
@@ -2900,6 +3065,7 @@ class Tide16Readout extends HTMLElement {
      uses it for the point, so a missing reading draws nothing rather
      than a stray ".". */
   _value(row) {
+    if (row.clock) return this._clock();
     // A row with no entity is static text - it has nothing to be missing.
     if (!row.entity) return '';
     const gone = row.placeholder == null ? this._cfg.placeholder : row.placeholder;
@@ -4594,7 +4760,10 @@ const PANEL_LAYOUT = {
           {
             "label": "Tide FW:",
             "entity": "sensor.tide16_versions",
-            "attribute": "tide"
+            "attribute": "tide",
+            "alert_entity": "binary_sensor.tide16_firmware_update",
+            "alert_color": "#A33F00",
+            "alert_weight": 700
           },
           {
             "label": "HDMI FW:",
@@ -4602,6 +4771,15 @@ const PANEL_LAYOUT = {
             "attribute": "hdmi"
           }
         ],
+        "badge": {
+          "image": "/tide16_static/swu.png",
+          "alt": "Update available",
+          "hint": "Use the Device Console to update FW",
+          "entity": "binary_sensor.tide16_firmware_update",
+          "size": "2.157cqw",
+          "min_opacity": 0.05,
+          "period": 2
+        },
         "style": {
           "left": "69.397%",
           "top": "86.000%",
@@ -4613,13 +4791,24 @@ const PANEL_LAYOUT = {
         "title": `v${TIDE16_VERSION}`,
         "title_size": "0.980cqw",
         "title_color": "#000",
-        "title_gap": "0",
+        "title_gap": "0.150cqw",
+        "size": "0.980cqw",
+        "color": "#000",
+        "rows": [
+          {
+            "clock": true,
+            "offset_entity": "sensor.tide16_clock_offset",
+            "offset_max": 43200,
+            "alert_color": "#8B0000",
+            "alert_weight": 700,
+            "alert_hint": "The Tide16 NTP time updates are out of sync on the local network"
+          }
+        ],
         "align": "right",
         "style": {
           "right": "0.854%",
           "left": "unset",
-          "top": "91.625%",
-          "width": "4.020%",
+          "top": "86.000%",
           "transform": "translate(0, 0)"
         }
       },

@@ -243,6 +243,16 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
         },
     ),
     Tide16SensorDescription(
+        # The unit's clock less Home Assistant's.  A second or two either way
+        # is measurement.  The plate's clock turns red past twelve hours - a
+        # unit whose NTP never got through, not one that has drifted.
+        key="clock_offset",
+        name="Clock Offset",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        native_unit_of_measurement="s",
+        value=lambda d: d.get("clock_offset"),
+    ),
+    Tide16SensorDescription(
         key="versions",
         name="Versions",
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -262,6 +272,10 @@ SENSORS: tuple[Tide16SensorDescription, ...] = (
             "hdmi_card": (d.get("versions") or {}).get("hdmi_card"),
             "hdmi_xmos": (d.get("versions") or {}).get("hdmi_xmos"),
             "hdmi_kernel": (d.get("versions") or {}).get("hdmi_kernel"),
+            "front_panel": (d.get("versions") or {}).get("front_panel"),
+            "front_panel_packaged": (d.get("versions") or {}).get(
+                "front_panel_packaged"
+            ),
         },
     ),
 )

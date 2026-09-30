@@ -6,7 +6,7 @@ A photoreal front panel for the miniDSP Tide16 in Home Assistant - with a
 **live 16-channel output meter**, and every control on it wired to the
 device.
 
-![the Tide16 panel, live](docs/screenshot.png?v=2.6.1)
+![the Tide16 panel, live](docs/screenshot.png?v=2.6.2)
 
 *My system runs 7.2.4, so 13 outputs are
 assigned and the legend names them; yours will show your own layout.*
@@ -170,7 +170,7 @@ with the integration and a release can correct it.
 
 ### `custom:tide16-mini` - the mini tile
 
-![the Tide16 mini tile on an Overview dashboard](docs/tile.png?h=d58ed6a4)
+![the Tide16 mini tile on an Overview dashboard](docs/tile.png?h=ce8b4252)
 
 *The tile on my Overview with every part switched on: -38.5 dB, Roku, Dolby
 upmixing through Dirac Live, and the 13 assigned outputs named up their
@@ -456,6 +456,10 @@ Used for the Program and Preset blocks.
 | `color` / `size` / `row_gap` | `#B7B8B8` / `0.45cqw` / `0.10cqw` | |
 | `align` | `left` | |
 | `rows` | `[]` | |
+| Row `alert_entity` / `alert_state` | - / `on` | The row goes into alert while that entity reads that state |
+| Row `clock` / `offset_entity` / `offset_max` | - / - / `60` | The row is the date and time, and goes into alert when the unit's clock is more than `offset_max` seconds out |
+| Row `alert_color` / `alert_weight` / `alert_hint` | `#8B0000` / `700` / - | How a row in alert is drawn, and the note shown when it is hovered |
+| `badge` | `null` | `{image, size, min_opacity, period, hint, entity, state}` - a pulsing mark to the right of the rows, shown only while `entity` reads `state` |
 
 ### `tide16-inputs` - the source selector
 
@@ -575,7 +579,63 @@ the only name the thing has, so it's worth setting.
 
 These are native `title` tooltips: no dependency, no layout risk, and no
 way to clip them at the edge of the plate - at the cost of the browser's
-own delay before they appear.
+own delay before they appear.  The two warnings below are the exception:
+they are drawn by the card, because the readouts they sit in repaint
+several times a second and a native tooltip restarts on every repaint.
+
+## When the panel warns you
+
+Two things on the plate change colour to get your attention.  Both are
+checked once an hour, and both stay quiet unless they are sure.
+
+### The Tide FW line turns orange and an update icon pulses
+
+The firmware rows, bottom middle of the silver end panel.  It means one of
+these:
+
+- **miniDSP's update server has newer firmware for this unit.**  Once an
+  hour the integration asks the Tide16 to check, exactly as "Check for
+  updates" does on the unit's own page, and the unit asks the server it is
+  set up to use.  The integration adds no channel of its own - the unit has
+  no stable/beta setting, and the check sends none - so it only ever reports
+  what that server offers this unit.
+- **The front panel runs older firmware than the Tide carries for it.**  The
+  Tide firmware includes the front panel's, but installing it is a separate
+  step.  A front panel that is *newer* than the package is left alone.
+
+To install it, open the unit's own control page - the Device Console, at
+`http://<your Tide16>:5050` - and go to **Settings**.  The **Update**
+section there checks and installs the Tide firmware, and **Front Panel
+Controller → Update** installs the front panel's, after which the unit
+turns itself off.  This integration never installs anything itself.
+
+`binary_sensor.tide16_firmware_update` is what drives it.  Its attributes
+hold every firmware level, the server's answer word for word, and when it
+was last checked.  An answer the integration does not recognise leaves the
+sensor unknown, which shows nothing, and is written to the log.
+
+### The date and time turn red
+
+Bottom right, under the card's version.  The Tide16's own clock is more
+than twelve hours away from Home Assistant's, which means the unit has not
+been able to set its clock from the internet since it last started.
+Hover over it for the note.
+
+Most often that is the network in the way rather than the unit:
+
+- A firewall or router rule that blocks outgoing NTP (UDP port 123) for
+  the Tide16.
+- DNS filtering - Pi-hole, AdGuard or the router's own - that blocks the
+  time server's name.
+- A static IP on the unit with no gateway or DNS server set.
+
+Fix what is in the way, then restart the Tide16 so it tries again.  A
+unit that cannot reach a time server may well be unable to reach miniDSP's
+update server either, so the firmware check above can be quiet for the
+same reason.
+
+`sensor.tide16_clock_offset` is the difference in seconds, unit minus Home
+Assistant, read off the unit's control page.  A second or two is normal.
 
 ## The scene buttons are the *device's* scenes
 
@@ -717,6 +777,7 @@ have confirmed otherwise for the file you want.
 |---|---|---|
 | `custom_components/tide16/frontend/plate-v3.png` | The front-panel artwork as the hardware actually draws it - `plate-v2.png` with the "Program" and "Listening" labels painted out, since the shipping firmware shows neither | Depicts a miniDSP product.  **Excluded** |
 | `custom_components/tide16/frontend/badge-dolby-audio.png`, `…/badge-dolby-atmos.png`, `…/badge-dtsx.png` | The decoder lockups shown along the bottom strip, keyed to white on transparency | Third-party marks, provenance unconfirmed.  **Excluded** |
+| `custom_components/tide16/frontend/swu.png` | The firmware-update badge - circling arrows over a progress bar and "UPDATE", keyed from white to transparency | Provenance unconfirmed.  **Excluded** |
 | `custom_components/tide16/frontend/dirac-white.png` | The circled Dirac mark, in the white the hardware uses | Third-party mark, provenance unconfirmed.  **Excluded** |
 | `custom_components/tide16/frontend/plate-v2.png` | Front-panel artwork of the miniDSP Tide16, redrawn and stripped of its baked-in readings so live values can be painted back on | Depicts a miniDSP product.  **Excluded** |
 | `custom_components/tide16/frontend/plate.png` | The original photographic plate, superseded by `plate-v2.png` and kept only for history | Photograph of a miniDSP product.  **Excluded** |
